@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+runs/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.idea/
+*.pem
+.cloudflared/
