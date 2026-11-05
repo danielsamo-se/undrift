@@ -1,4 +1,4 @@
-# Undrift preflight: setup
+# Undrift: setup
 
 All commands run in **PowerShell** from `C:\Users\danie\PycharmProjects\undrift`, using the project venv.
 Secrets live only in `.env` (git-ignored). Never paste secrets into chat, commits, or screenshots.
@@ -18,13 +18,17 @@ Verified versions: Python 3.13.3, cominty-sdk 1.2.0, mcp 2.3.0, uvicorn 0.54.0.
 ```
 
 This writes a 256-bit `MCP_PATH_SECRET` to `.env` and never prints it. The endpoint is `/mcp/<secret>`; every other path returns 404.
-`--rotate` replaces the secret. After rotating, update the URL in Cominty (step 5).
+To rotate without downtime, use the staged procedure in step 12. `--rotate` replaces the secret immediately and breaks the registered URL.
 
-## 2. Local test (done, 27/27 PASS)
+## 2. Local tests (30/30 protocol checks, 80 pytest tests, 26 UI tests)
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\test_mcp.py
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe -m pytest
 ```
+
+`test_mcp.py` builds a throwaway database (seed plus the Shiftly policy change) and never touches `data/undrift.db`.
 
 ## 3. Install cloudflared (manual, needs your approval)
 
@@ -130,8 +134,94 @@ Each paid run saves redacted evidence to `runs/spike_<timestamp>.json`, includin
 
 **Budget:** the Cominty SDK has **no hard spending cap**. `max_steps` caps tool rounds per message, not money, and cost is reported only after the run (`Result.data.cost.total`). Run `--run` once, read the cost, and decide before running again.
 
+## 10. Local state: SQLite
+
+`data/undrift.db` (git-ignored) holds policies with version history, channels, documents with version history, proposals and the activity log. `server.py`, `api.py` and `cli.py` share it (WAL mode). An empty database is seeded with the four preflight documents and policy v1 (60 days).
+
+```powershell
+.\.venv\Scripts\python.exe scripts\gen_secret.py --review-token   # once; value not shown
+.\.venv\Scripts\python.exe cli.py init
+.\.venv\Scripts\python.exe cli.py change-policy --shiftly-30        # v2: 30 days from 2026-11-04
+.\.venv\Scripts\python.exe cli.py status
+.\.venv\Scripts\python.exe cli.py events
+```
+
+Status on 2026-11-05: the database exists, the policy is at v2, and `UNDRIFT_REVIEW_TOKEN` is set. The policy change flagged doc-001 as actionable; doc-003 is flagged but protected as an existing commitment.
+
+## 11. Review: authorization model
+
+- Agents can only **submit** proposals. A proposal is created as `pending_review` and never changes the document.
+- Changing a policy, approving, rejecting and applying all require `UNDRIFT_REVIEW_TOKEN`, and it is checked on every call. Anything an agent writes, such as "approved by a human" or `"status": "approved"`, is ignored. MCP has no review tool.
+- `apply` checks that the document is still at the proposal's base version with identical content; otherwise it fails with 409. It writes a new document version to the local database only.
+- Anyone who can read `.env` on this machine is a reviewer. That is acceptable for the local demo, not for a multi-user deployment.
+
+```powershell
+.\.venv\Scripts\python.exe cli.py show <proposal_id>
+.\.venv\Scripts\python.exe cli.py approve <proposal_id> --note "checked"
+.\.venv\Scripts\python.exe cli.py apply <proposal_id>
+```
+
+The local API for the React frontend runs with `python api.py` on `http://127.0.0.1:8100/api`. It refuses any non-loopback client or `Host` header (403), so a tunnel cannot expose it. CORS allows only `http://localhost:*` and `http://127.0.0.1:*`. Reads need no token; every `POST` needs `Authorization: Bearer <UNDRIFT_REVIEW_TOKEN>`.
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/events?after=&limit=&type=&subject_type=&subject_id=` | activity log, ordered by `seq`; poll with `after=next_after` |
+| GET | `/api/proposals?status=&document_id=` | proposals with original, proposed content and diff |
+| GET | `/api/proposals/{id}` | proposal plus its audit events |
+| GET | `/api/documents` | current documents and channels |
+| GET | `/api/policies/{id}` | current version, history, deterministic impact candidates |
+| POST | `/api/policies/{id}/versions` | new policy version (token) |
+| POST | `/api/proposals/{id}/approve` / `reject` / `apply` | review actions (token) |
+
+## 12. Rotate the exposed MCP path secret (coordinated, with overlap)
+
+The current secret leaked in a copied Cloudflare error log. A replacement is **already staged** as `MCP_PATH_SECRET_NEXT` in `.env`. The running server ignores it until restarted. During the overlap the new `server.py` serves both paths, and every tool call records which one was used (`secret_slot`: `current` or `next`).
+
+1. *(done)* `python scripts\gen_secret.py --stage`
+2. **Restart `server.py`** (Terminal B: Ctrl+C, then `.\.venv\Scripts\python.exe server.py`). The log must show `Staged next secret path: accepted` and `Write tools: disabled`. The old URL keeps working.
+3. `python scripts\mcp_url.py --copy --next`, then paste into the Cominty integration's MCP Server URL and save.
+4. `python spike.py` (free) must print `path_matches_secret=next`. Then `python cli.py events` should show new `mcp.tool_call` events with `"secret_slot": "next"`.
+5. `python scripts\gen_secret.py --promote`, then restart `server.py` again. The old path now returns 404. Run `python scripts\test_mcp.py --remote` to confirm.
+
+Do not do step 5 before step 3: promoting first breaks the Cominty integration until its URL is updated.
+
+## 13. Agent impact + correction run (prepared, not run)
+
+`run_impact.py` asks the agent to classify all documents and write a full corrected text for each OUTDATED one. The reply is parsed locally, and each correction goes through the same validation as every other proposal: optimistic version checks, policy version, guardrails, at most one open proposal per document. It becomes `pending_review`. Nothing is approved or applied.
+
+Before the first paid run:
+
+1. Put the contents of `agents/patch.md` into the agent's instructions, either on the existing agent or on a new agent (then update `COMINTY_AGENT_ID`). This is a remote agent change.
+2. `python run_impact.py` (free) must print `instructions ... MATCH`, `model gate ... OK` and `local ... actionable=['doc-001']`.
+3. `python run_impact.py --run` performs ONE paid run. Evidence goes to `runs/impact_<timestamp>.json`, and the MCP calls the server saw during the run are listed from the activity log, including calls made by Cominty subagents.
+
+Write tool: `submit_proposal` exists only with `UNDRIFT_MCP_WRITE_TOOLS=1`, and `server.py` refuses to start that way while `MCP_PUBLIC_HOST` is set. It can only create `pending_review` proposals.
+
+## 14. Product UI (React + TypeScript)
+
+Node.js is not installed system-wide. A portable Node 24.22.2 LTS (official zip, SHA-256 verified against nodejs.org) lives in the git-ignored `.tools\node`. Put it on the PATH of the terminal you use for the UI:
+
+```powershell
+$env:Path = "$PWD\.tools\node;$env:Path"
+cd ui
+npm ci            # once
+npm test          # vitest
+npm run build     # type check + production bundle into ui\dist
+cd ..
+```
+
+Run it (Terminal D). The MCP server and tunnel keep running unchanged; this is a separate, loopback-only process:
+
+```powershell
+.\.venv\Scripts\python.exe api.py
+```
+
+Open http://127.0.0.1:8100/. To unlock review actions, run `.\.venv\Scripts\python.exe cli.py copy-token` and paste the token into **Reviewer locked**. The browser keeps it in memory only.
+
+For UI development with hot reload, keep `api.py` running and start `npm run dev` in `ui\`, then open http://127.0.0.1:5173 (Vite proxies `/api` to port 8100).
+
 ## Later: a stable URL (not configured; ask first)
 
 - **Named Cloudflare Tunnel** with a custom domain: needs a Cloudflare account and a domain on Cloudflare. `cloudflared tunnel login`, `cloudflared tunnel create undrift`, then a DNS route such as `mcp.<yourdomain>` and a `config.yml` ingress to `http://127.0.0.1:8000`. The hostname stays stable across restarts, so the Cominty URL never changes. The server still runs on this PC.
 - **Render or Railway**: deploy `server.py` as a web service. Bind to `0.0.0.0:$PORT` (needs a small change: the host is currently pinned to `127.0.0.1`). Set `MCP_PATH_SECRET` and `MCP_PUBLIC_HOST` (the service hostname) as platform secrets. You get a stable HTTPS URL and no dependency on this PC. Free tiers may sleep, which adds cold-start latency to the agent's first tool call.
-- Either way, the secret path is a temporary measure. Before any write tools exist, move to OAuth: the Cominty form supports an OAuth Client ID and Secret.
+- Either way, the secret path is a temporary measure. Before write tools are exposed publicly, move to OAuth: the Cominty form supports an OAuth Client ID and Secret.

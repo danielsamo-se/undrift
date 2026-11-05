@@ -81,9 +81,8 @@ async def free_checks(client: AsyncCominty, agent_id: str, connection: str) -> t
         ok = ok and match_chain
     out(f"agent mcp    activation={mcp_cap.activation if mcp_cap else None} "
         f"connections={mcp_cap.connections if mcp_cap else None}")
-    if not (mcp_cap and mcp_cap.activation != "never"
-            and (mcp_cap.connections == "*" or connection in mcp_cap.connections)):
-        out(f"agent mcp    {connection!r} is not available to this agent")
+    if not (mcp_cap and mcp_cap.activation != "never" and mcp_cap.connections == [connection]):
+        out(f"agent mcp    MISMATCH: expected exactly [{connection!r}] activated")
         ok = False
 
     servers = await client.mcp.list(enabled=None)
@@ -102,10 +101,18 @@ async def free_checks(client: AsyncCominty, agent_id: str, connection: str) -> t
     if match.mcp_url:
         u = urlparse(match.mcp_url)
         want_host = config.public_host()
-        secret = os.environ.get("MCP_PATH_SECRET", "")
-        out(f"mcp url      scheme={u.scheme} host_matches_MCP_PUBLIC_HOST="
-            f"{u.hostname == want_host if want_host else 'n/a'} "
-            f"path_matches_secret={u.path.rstrip('/') == config.mcp_path(secret) if secret else 'n/a'}")
+        slots = {name: os.environ.get(env, "").strip() for name, env in
+                 (("current", "MCP_PATH_SECRET"), ("next", "MCP_PATH_SECRET_NEXT"))}
+        path_slot = next((name for name, s in slots.items()
+                          if s and u.path.rstrip("/") == config.mcp_path(s)), "none")
+        want_slot = "next" if slots["next"] else "current"
+        host_ok = bool(want_host) and u.hostname == want_host
+        out(f"mcp url      scheme={u.scheme} host_matches_MCP_PUBLIC_HOST={host_ok} "
+            f"path_matches_secret={path_slot} (expected {want_slot})")
+        ok = ok and u.scheme == "https" and host_ok and path_slot == want_slot
+    else:
+        out("mcp url      not returned by the API: cannot verify host and path")
+        ok = False
     return ok, models
 
 

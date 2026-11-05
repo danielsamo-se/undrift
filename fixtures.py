@@ -1,46 +1,43 @@
-"""Fictional Shiftly test fixtures for the preflight. In-memory, read-only."""
+"""Fictional Shiftly seed data: the four preflight documents and the returns policy history."""
 
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Literal
 
-from pydantic import BaseModel, Field
+from models import Document, Policy
 
+POLICY_ID = "shiftly-returns"
+POLICY_TITLE = "Shiftly voluntary returns"
 
-class Policy(BaseModel):
-    id: str = Field(description="Policy identifier")
-    version: int = Field(description="Monotonic policy version")
-    policy_type: Literal["voluntary_return"] = Field(description="Kind of policy")
-    voluntary_return_days: int = Field(description="Voluntary return period for new purchases, in days")
-    effective_from: date = Field(description="First purchase date (inclusive) this version applies to")
-    description: str = Field(description="Authoritative human-readable policy text")
-
-
-class Document(BaseModel):
-    id: str = Field(description="Document identifier")
-    channel: str = Field(description="Channel the content is published in")
-    title: str = Field(description="Document title")
-    content: str = Field(description="Document text exactly as published")
-    version: int = Field(description="Document version")
-    updated_at: datetime = Field(description="Last update time (UTC)")
-
-
-POLICIES: dict[str, Policy] = {
-    "shiftly-returns": Policy(
-        id="shiftly-returns",
-        version=2,
-        policy_type="voluntary_return",
-        voluntary_return_days=30,
-        effective_from=date(2026, 11, 4),
-        description=(
-            "Shiftly offers a voluntary return period of 30 days for purchases made on or after "
-            "2026-11-04 (previously 60 days). Purchases made before 2026-11-04 keep the voluntary "
-            "return period that was promised at the time of purchase. This voluntary period is "
-            "separate from the statutory 14-day EU right of withdrawal, which this policy does not "
-            "change."
-        ),
+SEED_POLICY = Policy(
+    id=POLICY_ID,
+    version=1,
+    policy_type="voluntary_return",
+    voluntary_return_days=60,
+    effective_from=date(2025, 1, 1),
+    description=(
+        "Shiftly offers a voluntary return period of 60 days. This voluntary period is separate "
+        "from the statutory 14-day EU right of withdrawal, which this policy does not change."
     ),
+)
+
+SHIFTLY_RETURNS_CHANGE = {
+    "voluntary_return_days": 30,
+    "effective_from": date(2026, 11, 4),
+    "description": (
+        "Shiftly offers a voluntary return period of 30 days for purchases made on or after "
+        "2026-11-04 (previously 60 days). Purchases made before 2026-11-04 keep the voluntary "
+        "return period that was promised at the time of purchase. This voluntary period is "
+        "separate from the statutory 14-day EU right of withdrawal, which this policy does not "
+        "change."
+    ),
+}
+
+CHANNELS: dict[str, tuple[str, str]] = {
+    "website-faq": ("Website FAQ", "public"),
+    "legal-terms": ("Legal terms", "public"),
+    "support-crm": ("Support CRM", "internal"),
+    "website-shipping": ("Website shipping page", "public"),
 }
 
 DOCUMENTS: dict[str, Document] = {
@@ -81,7 +78,7 @@ DOCUMENTS: dict[str, Document] = {
     ),
 }
 
-# Expected classification, used only by spike.py to grade the agent's answer.
+# Expected classification, used only by spike.py and tests to grade an agent's answer.
 EXPECTED_CLASSIFICATION: dict[str, str] = {
     "doc-001": "OUTDATED",
     "doc-002": "VALID_DISTINCT",

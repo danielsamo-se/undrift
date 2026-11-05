@@ -1,7 +1,8 @@
 """Protocol-level MCP tests using the official MCP Python client over Streamable HTTP.
 
-Local (default): starts server.py as a subprocess on a free port with a throwaway
-secret, runs every check, then scans the server's log output for the secret.
+Local (default): builds a throwaway database (seed + the Shiftly policy change), starts
+server.py as a subprocess on a free port with throwaway secrets, runs every check, then scans
+the server's log output and the database for the secrets.
 
     python scripts/test_mcp.py
 
@@ -18,6 +19,7 @@ import asyncio
 import json
 import os
 import secrets
+import shutil
 import socket
 import subprocess
 import sys
@@ -32,6 +34,9 @@ from mcp import Client
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import config  # noqa: E402
+import fixtures  # noqa: E402
+import workflow  # noqa: E402
+from store import Store  # noqa: E402
 
 EXPECTED_TOOLS = {"health_check", "get_policy", "get_document"}
 INIT_BODY = {
@@ -243,13 +248,27 @@ async def wait_ready(base: str, proc: subprocess.Popen[bytes], timeout: float = 
     raise RuntimeError("server did not become ready")
 
 
+def prepare_db(path: Path, review_token: str) -> None:
+    os.environ["UNDRIFT_REVIEW_TOKEN"] = review_token
+    store = Store(path)
+    store.init()
+    workflow.change_policy(store, fixtures.POLICY_ID, token=review_token,
+                           **fixtures.SHIFTLY_RETURNS_CHANGE)
+
+
 async def run_local() -> Results:
-    secret = secrets.token_urlsafe(32)
+    secret, next_secret = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
     r = Results(secret)
     port = free_port()
     base = f"http://127.0.0.1:{port}"
-    env = {**os.environ, "MCP_PATH_SECRET": secret, "MCP_PORT": str(port),
-           "MCP_PUBLIC_HOST": SIM_PUBLIC_HOST, "PYTHONUNBUFFERED": "1"}
+    tmp = Path(tempfile.mkdtemp(prefix="undrift-test-"))
+    db = tmp / "undrift.db"
+    review_token = secrets.token_urlsafe(32)
+    prepare_db(db, review_token)
+    env = {**os.environ, "MCP_PATH_SECRET": secret, "MCP_PATH_SECRET_NEXT": next_secret,
+           "MCP_PORT": str(port), "MCP_PUBLIC_HOST": SIM_PUBLIC_HOST, "PYTHONUNBUFFERED": "1",
+           "UNDRIFT_DB": str(db), "UNDRIFT_MCP_WRITE_TOOLS": "0",
+           "UNDRIFT_REVIEW_TOKEN": review_token}
     log_file = tempfile.NamedTemporaryFile("w+b", suffix=".log", delete=False)
     proc = subprocess.Popen([sys.executable, str(ROOT / "server.py")], cwd=ROOT, env=env,
                             stdout=log_file, stderr=subprocess.STDOUT)
@@ -259,6 +278,15 @@ async def run_local() -> Results:
         await check_mcp(url, "legacy", r)
         await check_mcp(url, "auto", r)
         await check_http(base, config.mcp_path(secret), r, local=True)
+        try:
+            async with Client(base + config.mcp_path(next_secret), mode="legacy",
+                              read_timeout_seconds=30) as client:
+                h = structured(await client.call_tool("health_check", {}))
+            r.record("staged next secret path served (rotation overlap)", h["status"] == "ok",
+                     f"health_check via next path status={h['status']}")
+        except Exception as exc:
+            r.record("staged next secret path served (rotation overlap)", False,
+                     f"{type(exc).__name__}: {exc}")
     finally:
         proc.terminate()
         try:
@@ -269,11 +297,25 @@ async def run_local() -> Results:
     log_text = Path(log_file.name).read_text(encoding="utf-8", errors="replace")
     Path(log_file.name).unlink(missing_ok=True)
     tool_lines = [ln for ln in log_text.splitlines() if "undrift: tool " in ln]
-    # Per mode: health_check, get_policy x2, get_document x2 reach the function body.
-    r.record("server log shows tool invocations", len(tool_lines) == 10,
-             f"{len(tool_lines)} 'undrift: tool ...' log lines (expected 10)")
-    r.record("secret absent from server log", secret not in log_text,
+    # Per mode: health_check, get_policy x2, get_document x2 reach the function body; +1 next path.
+    r.record("server log shows tool invocations", len(tool_lines) == 11,
+             f"{len(tool_lines)} 'undrift: tool ...' log lines (expected 11)")
+    r.record("secrets absent from server log",
+             all(s not in log_text for s in (secret, next_secret, review_token)),
              f"{len(log_text.splitlines())} log lines scanned")
+
+    calls = Store(db).events(type_prefix="mcp.tool_call", limit=1000)
+    slots = sorted({e.metadata.get("secret_slot") for e in calls})
+    errors = sorted(f"{e.metadata.get('tool')}" for e in calls if e.status == "error")
+    r.record("activity log persisted every tool call",
+             len(calls) == 11 and errors == ["get_document", "get_document", "get_policy", "get_policy"]
+             and slots == ["current", "next"],
+             f"{len(calls)} mcp.tool_call events, errors={errors}, secret slots={slots}")
+    raw = b"".join(f.read_bytes() for f in tmp.iterdir())
+    r.record("secrets absent from database files",
+             all(s.encode() not in raw for s in (secret, next_secret, review_token)),
+             f"{len(raw)} bytes scanned")
+    shutil.rmtree(tmp, ignore_errors=True)
     return r
 
 

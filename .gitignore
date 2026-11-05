@@ -2,6 +2,10 @@
 .env.*
 !.env.example
 runs/
+/data/
+*.db
+*.db-wal
+*.db-shm
 .venv/
 __pycache__/
 *.py[cod]
@@ -10,3 +14,6 @@ __pycache__/
 .idea/
 *.pem
 .cloudflared/
+.tools/
+ui/node_modules/
+ui/dist/
