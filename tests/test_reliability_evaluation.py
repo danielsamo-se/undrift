@@ -84,6 +84,15 @@ def test_report_api_does_not_expose_answer_book_or_allow_arbitrary_files(store,t
     monkeypatch.setenv('UNDRIFT_RELIABILITY_REPORT',str(report))
     client=TestClient(api.build_app(store,ui_dir=None),base_url='http://127.0.0.1',client=('127.0.0.1',1))
     assert client.get('/api/reliability').json()['state']=='completed'
+    diagnosis=report.with_name('reliability-v1-stop-diagnosis.json')
+    diagnosis.write_text(json.dumps({'original_report_sha256':'mismatched','summary':'Wrong study'}))
+    assert 'diagnosis' not in client.get('/api/reliability').json()
+    import hashlib
+    diagnosis.write_text(json.dumps({'original_report_sha256':hashlib.sha256(report.read_bytes()).hexdigest(),'summary':'Matched study'}))
+    assert client.get('/api/reliability').json()['diagnosis']['summary']=='Matched study'
+    canonical=hashlib.sha256(json.dumps(json.loads(report.read_text()),sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+    diagnosis.write_text(json.dumps({'original_report_sha256':'different-newlines','canonical_report_sha256':canonical,'summary':'Same content'}))
+    assert client.get('/api/reliability').json()['diagnosis']['summary']=='Same content'
     assert client.get('/.tools/reliability-v1/answers.v1.json').status_code==404
     with pytest.raises(workflow.WorkflowError): reliability.load_report(tmp_path/'private.json')
 
@@ -150,3 +159,28 @@ def test_preflight_recovery_refuses_any_paid_attempt(tmp_path,monkeypatch):
     (tmp_path/'report.json').write_text(json.dumps({'state':'stopped','results':[],'attempted_paid_messages':0}))
     (tmp_path/'attempt-1-1.json').write_text('{}')
     with pytest.raises(AssertionError): asyncio.run(evaluator.recover_preflight())
+
+
+def test_catalog_before_lead_reproduces_observed_capture_failure_without_regrading(demo):
+    import discovery
+    from test_clarification import native
+    run,secret=workflow.open_run(demo,'shiftly-returns',['doc-001','help-002'],actor='test',agent_id='impact',
+        metadata={'discovery':True,'discovery_strategy':'search_first_v1','max_steps':40})
+    clarification.create(demo,run.id,'connection',INSTRUCTIONS)
+    clarification.bind(demo,run.id,'thread','message')
+    for query in ['return period','send back','original offer']:
+        discovery.search_documents(demo,run_id=run.id,run_token=secret,query=query)
+    discovery.search_documents(demo,run_id=run.id,run_token=secret,query='',limit=25)
+    retrieve(demo,run,secret)
+    clarification.evidence(demo,run.id,'terminal',{'status':'success','questions':[native().model_dump()]})
+    with pytest.raises(workflow.WorkflowError) as caught:
+        clarification.capture(demo,run.id,[native()],actor='test',metadata={})
+    assert caught.value.details['observed']['lead_followed'] is False
+    assert clarification.listing(demo)[0]['phases'][0]['questions']==[]
+    workflow.close_run(demo,run.id,status='failed',actor='test',error='Native capture rejected')
+    clarification.finish(demo,run.id)
+    scored=reliability.score(demo,run.id,TRUTH)
+    assert not scored['native_question_integrity'] and scored['metrics']['accuracy']==0
+    with demo.read() as c:
+        terminal=json.loads(c.execute("SELECT payload FROM conversation_evidence WHERE kind='terminal'").fetchone()[0])
+    assert len(terminal['questions'])==1  # Actual emission evidence survives the rejection.

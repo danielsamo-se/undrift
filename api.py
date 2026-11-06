@@ -151,7 +151,21 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
 
     async def reliability_report(_: Request) -> JSONResponse:
         import reliability
-        return JSONResponse(await run_in_threadpool(reliability.load_report, os.environ.get('UNDRIFT_RELIABILITY_REPORT')))
+        def current():
+            report_path = os.environ.get('UNDRIFT_RELIABILITY_REPORT')
+            report = reliability.load_report(report_path)
+            path = Path(report_path or reliability.DEFAULT_REPORT)
+            diagnosis = path.with_name('reliability-v1-stop-diagnosis.json')
+            if diagnosis.exists() and path.exists():
+                import hashlib
+                import json
+                extra = json.loads(diagnosis.read_text(encoding='utf-8'))
+                canonical = hashlib.sha256(json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+                if (extra.get('original_report_sha256') == hashlib.sha256(path.read_bytes()).hexdigest()
+                        or extra.get('canonical_report_sha256') == canonical):
+                    report['diagnosis'] = extra
+            return report
+        return JSONResponse(await run_in_threadpool(current))
 
     async def events(request: Request) -> JSONResponse:
         await run_in_threadpool(store.reap_runs)

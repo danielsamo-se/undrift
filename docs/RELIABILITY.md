@@ -141,3 +141,38 @@ integrity, reconciled UNKNOWN handling, protected channels, corpus/rubric drift,
 exclusive one-shot execution, the ten-message/cost gates, restricted report paths,
 and UI failure/provisional/real-evidence presentation. All test providers are synthetic;
 only the separately authorized guarded batch produces the real evaluation evidence.
+
+## Actual v1 stop
+
+The first paid conversation `run-91c9a70bdd8efc4a` was retained as a failure.
+The agent performed four formulated queries, then catalog browsing (event 29),
+then its first document retrieval (event 31). This violated the frozen requirement
+to follow a search lead BEFORE catalog browsing. `clarification.capture` validates
+that contract before committing native questions, so its transaction rejected the
+otherwise genuine five native questions. Remote execution succeeded, local capture
+failed, and the evaluator stopped on native evidence/persistence mismatch. No
+continuation or conversations 2–5 were started. Cost: 0.4537737 reported units.
+
+The report preserves primary missing-label penalties, 19 provisional observations,
+full retrieval coverage and zero protected-channel edits. A separate, hash-bound
+`reliability-v1-stop-diagnosis.json` records five genuine provider-emitted questions
+and 100% provider emission recall, without changing the frozen product-persistence
+scores. The Review API joins this diagnosis only when the frozen result hash matches.
+
+This exposes a lifecycle coupling: search-strategy noncompliance currently prevents
+persisting safe native questions. The generic capture exception/empty assertion
+also obscures structured diagnostics in the run summary. A subsequent separately
+reviewed change should consider retaining native questions while independently
+recording strategy failure and should preserve structured failure details. No such
+guard change, agent tuning, regrading, retry or further paid execution was made here.
+The five-conversation study is incomplete; remaining authorization is not used to
+bypass the required stop. Execution cannot be resumed by the preflight-only recovery.
+
+Final local validation: **360 backend tests**, **61 React tests**, **65 MCP checks**,
+**two storefront tests**, TypeScript and production build passed. Headless browser
+verification confirms the Reliability page shows the failed real execution, four
+unstarted slots, cost, aggregate ranges and provider-versus-persistence diagnosis.
+Final API/UI is on `http://127.0.0.1:8401/#/reliability`, showing evaluation store 1.
+Its final staged UI is `.test-tmp/reliability-ui-final`; no archived UI was rebuilt
+or restarted. All historical file/domain checks and frozen source/configuration
+checks passed. No proposal, approval, application, publication or GitHub write occurred.

@@ -1,0 +1,48 @@
+{
+  "version": "reliability-v1",
+  "original_report_sha256": "0640c89d44edefe397c6f4033e301fa13d896729fa7563dfe0c78226bceaed25",
+  "canonical_report_sha256": "e1b3ae8015cdbe8f96ec54a116da99a66ac91c84fcbdd28832acbf06bcd8ac37",
+  "summary": "Stopped after evaluation 1: search leads were retrieved only after catalog browsing. Native question capture rejected the search-order violation; no continuation or later conversation was started.",
+  "run_id": "run-91c9a70bdd8efc4a",
+  "provider_status": "success",
+  "provider_native_question_count": 5,
+  "persisted_question_count": 0,
+  "provider_question_document_ids": [
+    "bot-003",
+    "crm-002",
+    "help-002",
+    "help-004",
+    "support-002"
+  ],
+  "provider_native_emission_recall": 1.0,
+  "provider_native_emission_precision": 1.0,
+  "failure": "discovery search-first contract was not satisfied",
+  "failed_rule": "lead_retrieval_before_catalog",
+  "search_validation": {
+    "enforced": true,
+    "distinct_formulated_queries_before_catalog": 4,
+    "number_free_query": true,
+    "lead_followed": false,
+    "no_search_leads": false,
+    "catalog_complete": true,
+    "search_calls": 5,
+    "similarity_calls": 0
+  },
+  "catalog_event_seq": 29,
+  "first_document_retrieval_seq": 31,
+  "provider_snapshot_sha256": "8284de75f16e56b92f98ec274d59b7437ff3ff773ed63e4b5e8a5df0fb3088dc",
+  "grading_note": "Provider emission is separate diagnostic evidence. The original frozen product-persistence and reconciliation scores are unchanged.",
+  "remaining_conversations_not_started": 4,
+  "paid_messages_attempted": 1,
+  "partial_observation_metrics": {
+    "accuracy": 0.7916666666666666,
+    "outdated_recall": 1.0,
+    "outdated_precision": 1.0,
+    "false_positives": 0,
+    "outdated_misses": 0,
+    "paraphrase_recall": 1.0,
+    "unknown_recall": 0.0,
+    "unknown_precision": null,
+    "protected_classification_accuracy": 0.8333333333333334
+  }
+}

@@ -32,3 +32,14 @@ it('keeps a failed real run visible with missing-label penalties and stop reason
   expect(screen.getByText(/Provisional observations exist/)).toBeTruthy();
   expect(screen.getByText(/not a certified consumed-step count/)).toBeTruthy();
 });
+
+it('separates native provider emission from rejected product persistence', () => {
+  const data=report(); data.state='stopped'; data.stop_reason='';
+  data.diagnosis={summary:'Search leads followed after catalog.',provider_native_question_count:5,
+    persisted_question_count:0,provider_native_emission_recall:1,failed_rule:'lead_retrieval_before_catalog',
+    catalog_event_seq:29,first_document_retrieval_seq:31};
+  render(<Reliability report={data} />);
+  expect(screen.getByRole('alert').textContent).toContain('Search leads followed after catalog');
+  expect(screen.getByText(/Cominty emitted 5 genuine native questions/)).toBeTruthy();
+  expect(screen.getByText(/Frozen persistence scores remain unchanged/)).toBeTruthy();
+});

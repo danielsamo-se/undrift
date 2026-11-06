@@ -21,6 +21,9 @@ export interface EvaluationStatistic {
   minimum: number | null; mean: number | null; maximum: number | null; defined_count: number; result_count: number;
 }
 export interface ReliabilityReport {
+  attempted_paid_messages?: number;
+  diagnosis?: { summary: string; provider_native_question_count: number; persisted_question_count: number;
+    provider_native_emission_recall: number; failed_rule: string; catalog_event_seq: number; first_document_retrieval_seq: number };
   version: string; state: string; stop_reason?: string | null; evidence_kind?: string;
   protocol_sha256?: string; cumulative_reported_cost?: string; protected_historical_files_unchanged?: boolean;
   results: EvaluationRun[];

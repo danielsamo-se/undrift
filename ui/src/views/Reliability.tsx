@@ -10,6 +10,9 @@ const METRICS: [string, string, boolean][] = [
   ['unknown_precision','UNKNOWN precision',true], ['protected_classification_accuracy','Legal / CRM classification',true],
   ['native_clarification_recall','Native clarification recall',true],
   ['native_clarification_precision','Native clarification precision',true], ['retrieval_coverage','Retrieval coverage',true],
+  ['duration_s','Duration (seconds)',false], ['native_question_count','Persisted native questions',false],
+  ['reserved_parent_steps','Reserved parent allowance',false], ['observed_llm_rounds','Observed LLM rounds',false],
+  ['mcp_error_count','MCP errors',false],
 ];
 function value(number: number | null | undefined, percent = true) {
   return number == null ? 'N/A' : percent ? `${(number*100).toFixed(1)}%` : number.toFixed(1);
@@ -30,14 +33,19 @@ export function Reliability({ report }: { report: ReliabilityReport }) {
     <div className="reliability-summary">
       <div><strong>{a.recorded_conversations} / {a.planned_conversations}</strong><span>Conversations recorded</span></div>
       <div><strong>{a.reconciled_conversations}</strong><span>Final reconciliations</span></div>
-      <div><strong>{a.message_count} / 10</strong><span>Paid messages</span></div>
+      <div><strong>{report.attempted_paid_messages ?? a.message_count} / 10</strong><span>Attempted paid messages</span></div>
       <div><strong>{a.reported_total_cost}</strong><span>Reported cost · stop before next message at 5</span></div>
     </div>
     <p className="muted small">Scores use reconciled labels. Failed or unfinalized conversations retain missing-label penalties.
       Incomplete runs remain visible; honest UNKNOWN findings can coexist with verified independent corrections.
       N/A precision means no positive predictions; its defined sample count is shown.</p>
-    {report.stop_reason && <p role="alert" className="field-error">Evaluation stopped: {report.stop_reason}. No automatic retry.</p>}
-    {a.not_started > 0 && <p role="status">{a.not_started} planned conversations have not started.</p>}
+    {report.state === 'stopped' && <p role="alert" className="field-error">Evaluation stopped: {report.diagnosis?.summary || report.stop_reason || 'A safety invariant failed; inspect preserved execution evidence'}. No automatic retry.</p>}
+    {a.not_started > 0 && <p role="status">{a.not_started} planned conversations {report.state === 'executing' ? 'have no recorded outcome yet' : 'have not started'}.</p>}
+    {report.diagnosis && <div className="reliability-detail"><strong>Provider emission and product persistence</strong>
+      <p>Cominty emitted {report.diagnosis.provider_native_question_count} genuine native questions; the product persisted {report.diagnosis.persisted_question_count}.
+        Provider emission recall: {value(report.diagnosis.provider_native_emission_recall)}. Frozen persistence scores remain unchanged.</p>
+      <p className="muted small">Failed rule: {report.diagnosis.failed_rule}. Catalog event {report.diagnosis.catalog_event_seq}; first document retrieval event {report.diagnosis.first_document_retrieval_seq}.</p>
+    </div>}
     <section className="reliability-table"><table><caption>Aggregate metrics across all recorded conversations</caption>
       <thead><tr><th>Metric</th><th>Minimum</th><th>Mean</th><th>Maximum</th><th>Defined samples</th></tr></thead>
       <tbody>{METRICS.map(([key,label,percent]) => {
@@ -62,7 +70,9 @@ export function Reliability({ report }: { report: ReliabilityReport }) {
         <dt>MCP calls / errors</dt><dd>{Object.entries(r.mcp_calls).map(([k,n]) => `${k}: ${n}`).join(' · ')} / {r.mcp_error_count}</dd>
         <dt>Search queries</dt><dd>{r.search_queries.map((q,i) => <code key={i}>{q || '(catalog)'}; </code>)}</dd>
         <dt>Pending proposals</dt><dd>{r.proposal_count}</dd><dt>Misclassified / missing</dt><dd>{r.misclassified_document_ids.join(', ') || 'None'}</dd></dl>
-      {r.observed_unreconciled_metrics && <p>Provisional observations exist and are excluded from primary scores.</p>}
+      {r.observed_unreconciled_metrics && <p>Provisional observations exist and are excluded from primary scores.
+        Observed outdated recall {value(r.observed_unreconciled_metrics.outdated_recall)}, precision {value(r.observed_unreconciled_metrics.outdated_precision)},
+        accuracy {value(r.observed_unreconciled_metrics.accuracy)}.</p>}
       {r.errors.map((e,i) => <p className="muted small" key={i}>{e}</p>)}
     </details>)}
     <p className="muted small">Protocol SHA-256: <code>{report.protocol_sha256 ?? 'Not frozen yet'}</code><br/>
