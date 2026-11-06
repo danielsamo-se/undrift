@@ -169,8 +169,35 @@ def assert_frozen(protocol,plan):
 
 def switch(slot):
     write(ACTIVE,slot)
-    subprocess.run(['powershell','-NoProfile','-ExecutionPolicy','Bypass','-File',str(ROOT/'scripts/evaluation_services.ps1'),
-                    '-Config',str(ACTIVE)],cwd=ROOT,check=True,capture_output=True)
+    # Long-lived Windows children can inherit pipe handles. Wait only for the
+    # launcher process, never for EOF on a pipe held by the new services.
+    with (PRIVATE/f"switch-{slot['slot']}.log").open('a',encoding='utf-8') as log:
+        subprocess.run(['powershell','-NoProfile','-ExecutionPolicy','Bypass','-File',str(ROOT/'scripts/evaluation_services.ps1'),
+                        '-Config',str(ACTIVE)],cwd=ROOT,check=True,stdout=log,stderr=subprocess.STDOUT,timeout=30)
+
+async def recover_preflight():
+    """Free infrastructure recovery ONLY when no paid dispatch was attempted."""
+    plan=json.loads(PLAN.read_text(encoding='utf-8')); old=json.loads(PROTOCOL.read_text(encoding='utf-8'))
+    report=json.loads(REPORT.read_text(encoding='utf-8'))
+    assert report['state']=='stopped' and not report['results'] and report.get('attempted_paid_messages',0)==0
+    assert not list(PRIVATE.glob('attempt-*.json'))
+    for slot in plan['slots']:
+        assert not Store(ROOT/slot['database']).runs()
+    assert file_hash(TRUTH)==old['rubric_sha256'] and file_hash(PRIVATE/'answers.v1.json')==old['answer_fixture_sha256']
+    assert file_hash(ROOT/'agents/discovery.md')==old['instructions_raw_sha256'] and digest(manifest())==old['corpus_sha256']
+    assert all(file_hash(ROOT/p)==v for p,v in plan['protected_files'].items())
+    configure(plan['slots'][0])
+    assert await attestation(Store(ROOT/plan['slots'][0]['database']))==old['remote']
+    write(PRIVATE/'preflight-protocol-1.json',old,True)
+    write(PRIVATE/'preflight-stop-1.json',report,True)
+    (PRIVATE/'execution.lock').rename(PRIVATE/'preflight-execution-1.lock')
+    revised={**old,'source_sha256':{p:file_hash(ROOT/p) for p in SOURCES},'preflight_revision':2,
+        'frozen_at':datetime.now(UTC).isoformat(),
+        'pre_execution_correction':'Windows inherited pipe blocked service handoff; zero conversations or paid dispatches. Original protocol/stop/lock preserved privately and in prior Git checkpoint.'}
+    write(PROTOCOL,revised)
+    write(REPORT,{'version':reliability.VERSION,'state':'prepared','evidence_kind':'real_cominty_evaluation',
+        'results':[],'aggregate':reliability.aggregate([]),'stop_reason':None})
+    print('Preflight infrastructure recovered; no paid execution was retried. Revised protocol:',file_hash(PROTOCOL))
 
 async def wait_service(slot):
     for _ in range(25):
@@ -322,13 +349,14 @@ async def execute():
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action',choices=['prepare','freeze','execute'])
+    parser.add_argument('action',choices=['prepare','freeze','recover-preflight','execute'])
     parser.add_argument('--ui-dir',type=Path)
     parser.add_argument('--paid',action='store_true')
     args=parser.parse_args()
     try:
         if args.action=='prepare': prepare(args.ui_dir)
         elif args.action=='freeze': asyncio.run(freeze())
+        elif args.action=='recover-preflight': asyncio.run(recover_preflight())
         else:
             if not args.paid: parser.error('execute requires explicit --paid authorization')
             asyncio.run(execute())

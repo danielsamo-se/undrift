@@ -8,7 +8,13 @@ $active = Get-Content -LiteralPath $activePath -Raw | ConvertFrom-Json
 $targets = @(@{service='mcp';port=8001}, @{service='api';port=8401})
 $owners = @{}
 foreach ($target in $targets) {
-    $listener = @(Get-NetTCPConnection -State Listen -LocalPort $target.port)
+    $listener = @(Get-NetTCPConnection -State Listen -LocalPort $target.port -ErrorAction SilentlyContinue)
+    if ($listener.Count -eq 0) {
+        $previous = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $activePath) ($target.service + '-runtime.json')) -Raw | ConvertFrom-Json
+        if (Get-Process -Id $previous.pid -ErrorAction SilentlyContinue) { throw 'Previous service is still alive without a listener; inspect before restarting.' }
+        $owners[$target.service] = $null
+        continue
+    }
     if ($listener.Count -ne 1 -or $listener[0].LocalAddress -ne '127.0.0.1') { throw 'Unexpected evaluation listener.' }
     $owner = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $listener[0].OwningProcess)
     if ($owner.ExecutablePath -ne $python -or $owner.CommandLine -notmatch ('(start_clarification_demo\.py|evaluation_service\.py)"?\s+' + $target.service + '(\s|$)')) { throw 'Listener not owned by an approved demo service.' }
@@ -26,9 +32,11 @@ foreach ($target in $targets) {
 $archives = @{}
 foreach ($port in 8101,8301,8200,4040) { $archives[$port] = @(Get-NetTCPConnection -State Listen -LocalPort $port).OwningProcess }
 foreach ($target in $targets) {
-    $owner = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $owners[$target.service])
-    if ($owner.CommandLine -notmatch ('(start_clarification_demo\.py|evaluation_service\.py)"?\s+' + $target.service + '(\s|$)')) { throw 'Ownership changed.' }
-    Stop-Process -Id $owner.ProcessId
+    if ($null -ne $owners[$target.service]) {
+        $owner = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $owners[$target.service])
+        if ($owner.CommandLine -notmatch ('(start_clarification_demo\.py|evaluation_service\.py)"?\s+' + $target.service + '(\s|$)')) { throw 'Ownership changed.' }
+        Stop-Process -Id $owner.ProcessId
+    }
     Start-Sleep -Milliseconds 350
     $logPrefix = Join-Path (Split-Path -Parent $activePath) ($active.slot.ToString() + '-' + $target.service)
     Start-Process -FilePath $python -ArgumentList @('-B', ('"' + (Join-Path $PSScriptRoot 'evaluation_service.py') + '"'), $target.service, '--config', ('"' + $activePath + '"')) -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput ($logPrefix + '.stdout.log') -RedirectStandardError ($logPrefix + '.stderr.log') | Out-Null

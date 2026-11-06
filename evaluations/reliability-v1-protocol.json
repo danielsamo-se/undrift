@@ -1,6 +1,6 @@
 {
   "version": "reliability-v1",
-  "frozen_at": "2026-11-06T22:47:19.137305+00:00",
+  "frozen_at": "2026-11-06T22:54:49.379829+00:00",
   "remote": {
     "instructions_normalized_sha256": "ed03b7f22724bab6ec7a900952bdc05547d22694c0de73a1dc01811a8c9ba787",
     "agent_id": "-cS4pr7oTPO4",
@@ -44,10 +44,10 @@
     "server.py": "e7fca9b5c7a62a834a255c36d0eead6d16ce05eb701e64b06c71c9e7786aa1cc",
     "config.py": "f04c9e62e884ec0d4f27cc207a4553586e3206f371cdc222ab0c2c737635969e",
     "reliability.py": "eb4dcdf2c36085cf60fff45368f7e27d429d071f553a0be66266a86104745929",
-    "scripts/reliability_evaluation.py": "187bc9bba7881f4a8c8b050edaddace7bf17f479a65ff7aac6ada5538a106997",
+    "scripts/reliability_evaluation.py": "b4e03c800d4581193999eb8f96f0b0caa09bc9511da7a05c5ef4984c30d57677",
     "scripts/evaluate_clarification.py": "70d71144d02f2f8a9fca2aa5cd23366f02c90ccc7cc221988840712b8c8ea898",
     "scripts/evaluation_service.py": "1809d1184baa8b2fcf880ad1756b3702772df671f7484ebddda813191811f181",
-    "scripts/evaluation_services.ps1": "097d4ec7f85ece1f45755b4595f656048a6afa5b63ae1776a4aeeb30a1459b7a"
+    "scripts/evaluation_services.ps1": "2b022b90f84eac5945683fc60ab9fedc72c62ea40a41b2f4cb7e703994a301a5"
   },
   "conversations": 5,
   "max_continuations_per_conversation": 1,
@@ -65,5 +65,7 @@
   "undefined_precision": "null; aggregates display defined_count and never invent precision for empty predictions.",
   "continuation_policy": "Only for actual native questions, with the private fixed factual answers; no third turn.",
   "sdk_version": "1.2.0",
-  "steps_measurement": "Reserved parent allowance plus unique llm correlation IDs; no exact consumed-step API."
+  "steps_measurement": "Reserved parent allowance plus unique llm correlation IDs; no exact consumed-step API.",
+  "preflight_revision": 2,
+  "pre_execution_correction": "Windows inherited pipe blocked service handoff; zero conversations or paid dispatches. Original protocol/stop/lock preserved privately and in prior Git checkpoint."
 }

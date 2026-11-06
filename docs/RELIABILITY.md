@@ -128,6 +128,14 @@ against each preserved database and the unchanged rubric; no agent call is neede
 private plan/fixture/provider snapshots, attempt markers, completions and logs live
 under `.tools/reliability-v1/`. Standard redacted agent traces remain in `runs/`.
 
+The first infrastructure activation encountered a Windows inherited-pipe hang
+BEFORE any conversation or paid dispatch. The launcher now uses a file sink and
+a 30-second process timeout. `recover-preflight` is restricted to zero attempts,
+zero runs and unchanged instructions/corpus/rubric/answers/provider configuration.
+It archives the original protocol, stop report and lock, then records the source
+correction as a pre-execution protocol revision. It cannot recover/retry a paid
+execution. The original preflight checkpoint remains in Git history.
+
 Regression tests cover failure denominators, undefined precision, native evidence
 integrity, reconciled UNKNOWN handling, protected channels, corpus/rubric drift,
 exclusive one-shot execution, the ten-message/cost gates, restricted report paths,

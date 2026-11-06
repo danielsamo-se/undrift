@@ -126,3 +126,27 @@ def test_message_budget_fails_closed_before_next_paid_call(total,known,attempts)
 def test_last_allowed_message_can_start_below_cost_threshold():
     attempts=[{'slot':i,'phase':p} for i in range(1,5) for p in [1,2]]+[{'slot':5,'phase':1}]
     evaluator.paid_gate(Decimal('4.999'),True,attempts)
+
+
+def test_service_handoff_has_bounded_wait_without_inherited_capture_pipe(tmp_path,monkeypatch):
+    monkeypatch.setattr(evaluator,'PRIVATE',tmp_path)
+    monkeypatch.setattr(evaluator,'ACTIVE',tmp_path/'active.json')
+    import subprocess
+    def stalled_launcher(command,**options):
+        assert options['stdout'] is not subprocess.PIPE
+        assert options['stderr'] is subprocess.STDOUT
+        assert options['timeout']==30
+        raise subprocess.TimeoutExpired(command,30)
+    monkeypatch.setattr(evaluator.subprocess,'run',stalled_launcher)
+    with pytest.raises(subprocess.TimeoutExpired): evaluator.switch({'slot':1})
+
+
+def test_preflight_recovery_refuses_any_paid_attempt(tmp_path,monkeypatch):
+    monkeypatch.setattr(evaluator,'PRIVATE',tmp_path)
+    monkeypatch.setattr(evaluator,'PLAN',tmp_path/'plan.json')
+    monkeypatch.setattr(evaluator,'PROTOCOL',tmp_path/'protocol.json')
+    monkeypatch.setattr(evaluator,'REPORT',tmp_path/'report.json')
+    (tmp_path/'plan.json').write_text('{}'); (tmp_path/'protocol.json').write_text('{}')
+    (tmp_path/'report.json').write_text(json.dumps({'state':'stopped','results':[],'attempted_paid_messages':0}))
+    (tmp_path/'attempt-1-1.json').write_text('{}')
+    with pytest.raises(AssertionError): asyncio.run(evaluator.recover_preflight())
