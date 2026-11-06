@@ -652,9 +652,14 @@ def retrieval_status(store: Store, run: AgentRun,
 def _validate_finding(store: Store, conn: sqlite3.Connection, run: AgentRun, *,
                       policy_id: str, policy_version: int | None, document_id: str,
                       document_version: int | None, classification: str,
-                      evidence: str, reason: str) -> bool:
+                      evidence: str, reason: str, proposed_content: str | None = None) -> bool:
     if not isinstance(classification, str) or classification not in CATEGORIES:
         raise WorkflowError("invalid classification category")
+    if proposed_content is not None and (classification != 'OUTDATED' or not isinstance(proposed_content, str)
+            or not proposed_content.strip() or len(proposed_content) > MAX_CONTENT):
+        raise WorkflowError('corrections are optional, non-empty text for OUTDATED findings only')
+    if proposed_content is not None and config.redact(proposed_content) != proposed_content:
+        raise WorkflowError('credentials are forbidden in correction text')
     if policy_id != run.policy_id or not (
             (policy_version is None and classification == 'UNKNOWN')
             or (type(policy_version) is int and policy_version == run.policy_version)):
@@ -685,16 +690,27 @@ def _validate_finding(store: Store, conn: sqlite3.Connection, run: AgentRun, *,
         raise WorkflowError("authenticated policy and document retrieval is required")
     if not evidence or evidence not in doc.content:
         raise WorkflowError("evidence must be an exact quote from the retrieved document")
+    if proposed_content is not None:
+        policy, stale = _policy_context(store, run.policy_id, conn)
+        violations, flags = check_guardrails(doc.content, proposed_content,
+            current_days=policy.voluntary_return_days, stale=stale, evidence=evidence,
+            effective_from=policy.effective_from)
+        if violations:
+            raise GuardrailViolation('correction violates content guardrails', violations=violations, review_flags=flags)
     return verified
 
 
 def _save_finding(store: Store, conn: sqlite3.Connection, run: AgentRun, *,
                   document_id: str, document_version: int | None, classification: str,
-                  evidence: str, reason: str, actor: str, source: str) -> tuple[Finding, bool]:
+                  evidence: str, reason: str, actor: str, source: str,
+                  proposed_content: str | None = None) -> tuple[Finding, bool]:
     verified = _validate_finding(store, conn, run, policy_id=run.policy_id,
         policy_version=run.policy_version, document_id=document_id, document_version=document_version,
-        classification=classification, evidence=evidence, reason=reason)
-    submission = _sha(json.dumps([run.policy_version, document_version, classification, evidence, reason]))
+        classification=classification, evidence=evidence, reason=reason, proposed_content=proposed_content)
+    values = [run.policy_version, document_version, classification, evidence, reason]
+    if proposed_content is not None:
+        values.append(proposed_content)
+    submission = _sha(json.dumps(values))
     existing = conn.execute("SELECT * FROM findings WHERE run_id = ? AND document_id = ?",
                             (run.id, document_id)).fetchone()
     meta = {'run_id': run.id, 'document_id': document_id, 'document_version': document_version,
@@ -702,11 +718,13 @@ def _save_finding(store: Store, conn: sqlite3.Connection, run: AgentRun, *,
     if existing:
         if existing['submission_sha256'] != submission:
             raise Conflict("a different finding was already recorded for this document in this run")
-        return store._finding(existing), True
+        return store.findings(run_id=run.id, document_id=document_id, conn=conn)[0], True
     fid = f'fnd-{secrets.token_hex(8)}'
     conn.execute("INSERT INTO findings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                  (fid, run.id, run.policy_id, run.policy_version, document_id, document_version,
                   classification, evidence, reason.strip(), int(verified), submission, now(), source))
+    if proposed_content is not None:
+        conn.execute('INSERT INTO finding_corrections VALUES (?,?)', (fid, proposed_content))
     store.add_event(conn, 'finding.recorded', actor=actor, subject=('document', document_id),
                     metadata={**meta, 'finding_id': fid, 'retrieved_during_run': verified, 'source': source})
     return store.findings(run_id=run.id, document_id=document_id, conn=conn)[0], False
@@ -715,7 +733,7 @@ def _save_finding(store: Store, conn: sqlite3.Connection, run: AgentRun, *,
 def record_finding(store: Store, *, run_id: str, run_token: str, policy_id: str,
                    policy_version: int | None, document_id: str, document_version: int | None,
                    classification: str, evidence: str, reason: str,
-                   actor: str) -> tuple[Finding, bool]:
+                   actor: str, proposed_content: str | None = None) -> tuple[Finding, bool]:
     store.reap_runs()
     authenticated = False
     try:
@@ -724,10 +742,10 @@ def record_finding(store: Store, *, run_id: str, run_token: str, policy_id: str,
             authenticated = True
             _validate_finding(store, conn, run, policy_id=policy_id, policy_version=policy_version,
                 document_id=document_id, document_version=document_version, classification=classification,
-                evidence=evidence, reason=reason)
+                evidence=evidence, reason=reason, proposed_content=proposed_content)
             return _save_finding(store, conn, run, document_id=document_id,
                 document_version=document_version, classification=classification,
-                evidence=evidence, reason=reason, actor=actor, source='mcp')
+                evidence=evidence, reason=reason, actor=actor, source='mcp', proposed_content=proposed_content)
     except WorkflowError as exc:
         # Never persist untrusted ids or credentials from rejected submissions.
         store.record_event('finding.rejected', actor=actor,
@@ -796,13 +814,18 @@ def ingest_agent_reply(store: Store, reply: str, *, actor: str,
                 evidence, reason = entry.get('evidence'), entry.get('reason')
                 _validate_finding(store, conn, run, policy_id=run.policy_id,
                     policy_version=run.policy_version, document_id=did, document_version=version,
-                    classification=category, evidence=evidence, reason=reason)
+                    classification=category, evidence=evidence, reason=reason,
+                    proposed_content=entry.get('proposed_content') if run.metadata.get('discovery') else None)
                 existing = recorded.get(did)
                 if existing and (existing.category, existing.document_version, existing.evidence, existing.reason) != (
                         category, version, evidence, reason.strip()):
                     raise Conflict('final reply contradicts the recorded finding')
+                if existing and existing.proposed_content is not None:
+                    if entry.get('proposed_content') not in (None, existing.proposed_content):
+                        raise Conflict('final reply contradicts the recorded correction')
+                    entry['proposed_content'] = existing.proposed_content
                 if category == 'OUTDATED' and (not isinstance(entry.get('proposed_content'), str)
-                                             or not entry['proposed_content'].strip()):
+                                             or not entry['proposed_content'].strip()) and not run.metadata.get('discovery'):
                     raise WorkflowError('OUTDATED finding requires a correction')
             # All findings are valid before inserting compatibility fallback rows.
             for did, entry in entries.items():
@@ -810,13 +833,14 @@ def ingest_agent_reply(store: Store, reply: str, *, actor: str,
                 if did not in recorded:
                     recorded[did], _ = _save_finding(store, conn, run, document_id=did,
                         document_version=entry.get('document_version'), classification=entry['category'],
-                        evidence=entry['evidence'], reason=entry['reason'], actor=actor, source='final_json')
+                        evidence=entry['evidence'], reason=entry['reason'], actor=actor, source='final_json',
+                        proposed_content=entry.get('proposed_content') if run.metadata.get('discovery') else None)
             retrieval = retrieval_status(store, run, conn)
             complete = retrieval['complete'] and all(f.category != 'UNKNOWN' for f in recorded.values())
             if complete:
                 for did, entry in entries.items():
                     document_id = did
-                    if entry['category'] != 'OUTDATED':
+                    if entry['category'] != 'OUTDATED' or not entry.get('proposed_content'):
                         continue
                     p = submit_proposal(store, document_id=did, base_version=entry['document_version'],
                         policy_id=run.policy_id, policy_version=run.policy_version,

@@ -25,6 +25,12 @@ from store import Store, now
 import workflow
 
 VERIFICATION_FIELDS = ('verified_at', 'content_sha256', 'site_url', 'verification_evidence')
+JOURNAL_SCHEMA = (
+    'CREATE TABLE IF NOT EXISTS publications (database_id TEXT NOT NULL, proposal_id TEXT NOT NULL, '
+    'plan TEXT NOT NULL, state TEXT NOT NULL, PRIMARY KEY(database_id, proposal_id))',
+    'CREATE TABLE IF NOT EXISTS publication_events (seq INTEGER PRIMARY KEY, ts TEXT NOT NULL, '
+    'database_id TEXT NOT NULL, proposal_id TEXT NOT NULL, type TEXT NOT NULL, metadata TEXT NOT NULL)',
+)
 
 
 def digest(value):
@@ -304,16 +310,14 @@ class Publisher:
     def __init__(self, store: Store, target: Target, journal=None, github=None, web=None):
         self.store, self.target = store, target
         self.path = Path(journal or config.ROOT / 'data' / 'publishing.db')
-        if self.path.resolve() == store.path.resolve():
+        if self.path.resolve() == store.path.resolve() and store.metadata('unified_publications') != '1':
             raise workflow.WorkflowError('Publishing journal must be separate from the application database')
         self.github = github or GitHub(target)
         self.web = web
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.write() as c:
-            c.execute('CREATE TABLE IF NOT EXISTS publications (database_id TEXT NOT NULL, proposal_id TEXT NOT NULL, '
-                'plan TEXT NOT NULL, state TEXT NOT NULL, PRIMARY KEY(database_id, proposal_id))')
-            c.execute('CREATE TABLE IF NOT EXISTS publication_events (seq INTEGER PRIMARY KEY, ts TEXT NOT NULL, '
-                'database_id TEXT NOT NULL, proposal_id TEXT NOT NULL, type TEXT NOT NULL, metadata TEXT NOT NULL)')
+            for statement in JOURNAL_SCHEMA:
+                c.execute(statement)
 
     @contextmanager
     def write(self):
@@ -486,4 +490,5 @@ class Publisher:
 
 def configured(store):
     target = Target.configured()
-    return Publisher(store, target, os.environ.get('UNDRIFT_PUBLISH_DB')) if target else None
+    journal = os.environ.get('UNDRIFT_PUBLISH_DB') or (store.path if store.metadata('unified_publications') == '1' else None)
+    return Publisher(store, target, journal) if target else None

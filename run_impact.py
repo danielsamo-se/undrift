@@ -15,6 +15,7 @@ approved or applied. The run token is redacted from everything this script print
 from __future__ import annotations
 
 import argparse
+import hashlib
 import asyncio
 import json
 import os
@@ -50,7 +51,22 @@ INSTRUCTIONS = ROOT / "agents" / "patch.md"
 DEFAULT_MAX_STEPS = 8
 
 
-def build_prompt(policy_id: str, document_ids: list[str], run_id: str, run_token: str) -> str:
+def build_prompt(policy_id: str, document_ids: list[str], run_id: str, run_token: str,
+                 discovery: bool = False) -> str:
+    if discovery:
+        return (
+            f'Autonomous discovery run.\nRun ID: {run_id}\nRun token: {run_token}\n\n'
+            f'Retrieve policy {policy_id!r}. Discover the available channels and document counts with list_channels. '
+            'Use search_documents (including empty-query paginated browsing) and similar_documents to inspect the '
+            'entire authorized corpus, without asking the user for document IDs. Search results are leads, not '
+            'verified retrieval. Pass run_id and run_token to EVERY discovery, retrieval and finding call, '
+            'including through the integration subagent. Retrieve each document in full with get_document '
+            'before using its exact quoted evidence. Record each finding immediately with record_finding. '
+            'An optional proposed_content is allowed only for OUTDATED findings and must preserve all protected '
+            'and unrelated text. Use UNKNOWN for genuinely ambiguous scope. End with the final JSON contract '
+            'in your instructions, preserving accepted findings and corrections exactly. Never approve, apply '
+            'or publish. Never print the token.'
+        )
     return (
         f"Analysis run.\nRun ID: {run_id}\nRun token: {run_token}\n\n"
         f"Use the Undrift MCP integration (through its integration subagent if the tools are not "
@@ -67,11 +83,11 @@ def build_prompt(policy_id: str, document_ids: list[str], run_id: str, run_token
     )
 
 
-async def instructions_match(client: AsyncCominty, agent_id: str) -> bool:
+async def instructions_match(client: AsyncCominty, agent_id: str, path: Path = INSTRUCTIONS) -> bool:
     remote = ((await client.agents.get(agent_id)).instructions or "").replace("\r\n", "\n").strip()
-    local = INSTRUCTIONS.read_text(encoding="utf-8").replace("\r\n", "\n").strip()
+    local = path.read_text(encoding="utf-8").replace("\r\n", "\n").strip()
     match = remote == local
-    out(f"instructions remote sha={config.fingerprint(remote)} local agents/patch.md "
+    out(f"instructions remote sha={config.fingerprint(remote)} local {path.name} "
         f"sha={config.fingerprint(local)}: {'MATCH' if match else 'MISMATCH'}")
     return match
 
@@ -88,7 +104,7 @@ def local_checks(store: Store) -> bool:
     return True
 
 
-async def mcp_ready(store: Store) -> bool:
+async def mcp_ready(store: Store, discovery: bool = False) -> bool:
     """Verify the actual endpoint, scoped schemas, and shared database before spending."""
     from mcp import Client
     port = int(os.environ.get('MCP_PORT', config.DEFAULT_PORT))
@@ -102,6 +118,11 @@ async def mcp_ready(store: Store) -> bool:
                 available[name].input_schema.get('properties', {})) for name in ('get_policy', 'get_document'))
             shared = not health.is_error and (health.structured_content or {}).get('database_id') == store.identity()
             ready = shared and scoped and 'record_finding' in available
+            if discovery:
+                ready = ready and store.metadata('demo_profile') == 'shiftly-discovery-v1' and all(
+                    name in available and {'run_id', 'run_token'} <= set(available[name].input_schema.get('required', []))
+                    for name in ('list_channels', 'search_documents', 'similar_documents'))
+                out(f'Discovery endpoint scoped tools and unified profile: {ready}')
             out(f"MCP endpoint record_finding {'available' if 'record_finding' in available else 'unavailable'}; "
                 f"scoped_reads={scoped}; shared_database={shared}")
             return ready
@@ -111,11 +132,15 @@ async def mcp_ready(store: Store) -> bool:
 
 
 async def paid_run(client: AsyncCominty, store: Store, agent_id: str, connection: str,
-                   max_steps: int) -> int:
+                   max_steps: int, discovery: bool = False) -> int:
     actor = f'agent:cominty:{agent_id}'
     document_ids = store.document_ids()
     agent_run, run_token = workflow.open_run(store, fixtures.POLICY_ID, document_ids,
-        actor=actor, agent_id=agent_id, ttl=workflow.RUN_TTL, metadata={'max_steps': max_steps})
+        actor=actor, agent_id=agent_id, ttl=workflow.RUN_TTL,
+        metadata={'max_steps': max_steps,
+            **({'discovery': True, 'seed_sha256': store.metadata('seed_sha256'),
+                'instructions_sha256': hashlib.sha256((ROOT / 'agents/discovery.md').read_bytes()).hexdigest(),
+                'expected_model': os.environ.get('UNDRIFT_EXPECTED_MODEL')} if discovery else {})})
 
     async def heartbeat() -> None:
         while True:
@@ -124,7 +149,8 @@ async def paid_run(client: AsyncCominty, store: Store, agent_id: str, connection
 
     task = asyncio.create_task(heartbeat())
     work = asyncio.create_task(_paid_run(client, store, agent_id, connection, max_steps,
-                                        agent_run.id, run_token, document_ids, actor))
+                                        agent_run.id, run_token, document_ids, actor,
+                                        **({'discovery': True} if discovery else {})))
     try:
         # A failed lease renewal cancels the local run instead of silently losing ownership.
         done, _ = await asyncio.wait({task, work}, timeout=workflow.RUN_TTL.total_seconds(),
@@ -157,11 +183,11 @@ async def paid_run(client: AsyncCominty, store: Store, agent_id: str, connection
 
 async def _paid_run(client: AsyncCominty, store: Store, agent_id: str, connection: str,
                     max_steps: int, run_id: str, run_token: str, document_ids: list[str],
-                    actor: str) -> int:
+                    actor: str, discovery: bool = False) -> int:
     def scrub(text: str) -> str:
         return config.redact(text, run_token)
 
-    prompt = build_prompt(fixtures.POLICY_ID, document_ids, run_id, run_token)
+    prompt = build_prompt(fixtures.POLICY_ID, document_ids, run_id, run_token, discovery=discovery)
     record: dict[str, Any] = {'run_id': run_id, 'started_at': datetime.now(UTC).isoformat(),
                               'prompt': scrub(prompt), 'events': []}
     out(f'run          {run_id} opened (token issued, not shown)')
@@ -246,19 +272,25 @@ async def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run", action="store_true", help="start ONE paid agent run")
     parser.add_argument("--max-steps", type=int, default=DEFAULT_MAX_STEPS)
+    parser.add_argument('--discovery', action='store_true', help='Use scoped discovery and local agents/discovery.md; requires explicit isolated DB')
     args = parser.parse_args()
 
     config.load_env()
     env = require_env("COMINTY_API_KEY", "COMINTY_USER_ID", "COMINTY_AGENT_ID")
     connection = os.environ.get("UNDRIFT_MCP_CONNECTION", "undrift").strip()
     store = Store()
+    if args.discovery:
+        if not os.environ.get('UNDRIFT_DB') or store.path.resolve() == (ROOT / 'data/undrift.db').resolve():
+            raise SystemExit('Discovery requires an explicit isolated unified demo database')
+        if not store.path.is_file() or store.metadata('demo_profile') != 'shiftly-discovery-v1':
+            raise SystemExit('Create a fresh unified discovery database first; archives must not be migrated')
     store.init()
     try:
         async with AsyncCominty() as client:
             ready, _ = await free_checks(client, env["COMINTY_AGENT_ID"], connection)
-            ready = await instructions_match(client, env["COMINTY_AGENT_ID"]) and ready
+            ready = await instructions_match(client, env["COMINTY_AGENT_ID"], ROOT / 'agents/discovery.md' if args.discovery else INSTRUCTIONS) and ready
             ready = local_checks(store) and ready
-            ready = await mcp_ready(store) and ready
+            ready = await mcp_ready(store, discovery=args.discovery) and ready
             if not args.run:
                 out("\nFree checks done. No agent run was started (no credit spent).")
                 return 0 if ready else 1
@@ -267,7 +299,7 @@ async def main() -> int:
                 return 1
             out(f"\nStarting ONE paid run (max_steps={args.max_steps}).\n")
             return await paid_run(client, store, env["COMINTY_AGENT_ID"], connection,
-                                  args.max_steps)
+                                  args.max_steps, **({'discovery': True} if args.discovery else {}))
     except ComintyError as exc:
         out(f"Cominty error: {type(exc).__name__}: {exc}")
         return 2

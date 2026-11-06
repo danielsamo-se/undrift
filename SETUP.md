@@ -1,5 +1,10 @@
 # Undrift: setup
 
+The isolated 24-document unified discovery demo is documented in
+[docs/DISCOVERY.md](docs/DISCOVERY.md). Its builder creates a fresh database and
+never imports or resets historical evidence. Discovery tools are opt-in and
+require a run token; existing running services are unchanged.
+
 All commands run in **PowerShell** from `C:\Users\danie\PycharmProjects\undrift`, using the project venv.
 Secrets live only in `.env` (git-ignored). Never paste secrets into chat, commits, or screenshots.
 

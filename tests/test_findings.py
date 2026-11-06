@@ -358,7 +358,8 @@ def test_transactional_v1_migration_preserves_existing_proposal(tmp_path, monkey
     assert not s.init()
     with s.read() as conn:
         after = dict(conn.execute('SELECT * FROM proposals').fetchone())
-        assert conn.execute('PRAGMA user_version').fetchone()[0] == 3
+        from store import SCHEMA_VERSION
+        assert conn.execute('PRAGMA user_version').fetchone()[0] == SCHEMA_VERSION
         assert not conn.execute('PRAGMA foreign_key_check').fetchall()
     assert all(after[k] == v for k, v in before.items())
     assert not s.init()

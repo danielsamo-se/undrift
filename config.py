@@ -102,6 +102,10 @@ def findings_public_allowed() -> bool:
     return os.environ.get("UNDRIFT_MCP_FINDINGS_PUBLIC", "0").strip() == "1"
 
 
+def discovery_enabled() -> bool:
+    return os.environ.get('UNDRIFT_MCP_DISCOVERY', '0').strip() == '1'
+
+
 def known_secrets() -> list[str]:
     values = (os.environ.get(name, "").strip() for name in SECRET_ENV_NAMES)
     return [v for v in values if len(v) >= 8]

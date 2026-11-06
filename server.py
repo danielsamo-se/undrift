@@ -33,6 +33,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 import config
 import workflow
+import discovery
 from models import Document, Policy
 from store import Store
 
@@ -48,7 +49,8 @@ READ_ONLY = ToolAnnotations(
 )
 Identifier = Annotated[str, Field(min_length=1, max_length=64)]
 
-_state: dict[str, Any] = {"store": None, "findings_tool": False}
+_state: dict[str, Any] = {"store": None, "findings_tool": False, "discovery_tools": False}
+DISCOVERY_TOOLS = ['list_channels', 'search_documents', 'similar_documents']
 CATEGORY = Literal["OUTDATED", "VALID_DISTINCT", "EXISTING_COMMITMENT", "UNRELATED", "UNKNOWN"]
 RECORD_ONLY = ToolAnnotations(
     read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False
@@ -85,6 +87,27 @@ class FindingReceipt(BaseModel):
     document_version: int | None
     classification: str
     recorded_at: datetime
+
+
+class ChannelListing(BaseModel):
+    run_id: str
+    channels: list[dict[str, Any]]
+    document_count: int
+
+
+class SearchListing(BaseModel):
+    run_id: str
+    total: int
+    offset: int
+    results: list[dict[str, Any]]
+    retrieval_required: bool
+
+
+class SimilarityListing(BaseModel):
+    run_id: str
+    method: str
+    results: list[dict[str, Any]]
+    retrieval_required: bool
 
 
 mcp = MCPServer(
@@ -139,9 +162,9 @@ def health_check(ctx: Context) -> Health:
             version=SERVER_VERSION,
             database_id=store().identity(),
             read_only=not _state["findings_tool"],
-            tools=READ_TOOLS + (["record_finding"] if _state["findings_tool"] else []),
+            tools=READ_TOOLS + (DISCOVERY_TOOLS if _state['discovery_tools'] else []) + (["record_finding"] if _state["findings_tool"] else []),
             policy_ids=store().policy_ids(),
-            document_ids=store().document_ids(),
+            document_ids=[] if store().metadata('requires_scoped_reads') == '1' else store().document_ids(),
             server_time=datetime.now(UTC),
         )
 
@@ -183,6 +206,8 @@ def get_document(
 def _read_for_run(kind: str, subject_id: str, run_id: str | None,
                   run_token: str | None, meta: dict[str, Any]) -> Any:
     if run_id is None and run_token is None:
+        if store().metadata('requires_scoped_reads') == '1':
+            raise ToolError('unauthorized: run_id and run_token are required for this database')
         return store().policy(subject_id) if kind == "policy" else store().document(subject_id)
     if not run_id or not run_token:
         raise ToolError("run_id and run_token must be supplied together")
@@ -193,6 +218,52 @@ def _read_for_run(kind: str, subject_id: str, run_id: str | None,
         raise ToolError(f"{exc.code}: {exc}") from exc
     meta['run_id'] = run_id
     return value
+
+
+def _discover(tool, ctx, run_id, run_token, **kwargs):
+    with instrumented(ctx, tool, None) as meta:
+        try:
+            with store().read() as conn:
+                run = workflow.authorize_run(store(), run_id, run_token, conn)
+            meta['run_id'] = run.id
+            return getattr(discovery, tool)(store(), run_id=run_id, run_token=run_token,
+                                           actor=f"mcp:{meta['user_agent']}", **kwargs)
+        except workflow.WorkflowError as exc:
+            raise ToolError(config.redact(f'{exc.code}: {exc}', run_token)) from exc
+
+
+def list_channels(run_id: Annotated[str, Field(min_length=1, max_length=40)],
+                  run_token: Annotated[str, Field(min_length=1, max_length=128)], ctx: Context) -> ChannelListing:
+    """Discover authorized channels and document counts for this run only."""
+    return ChannelListing(**_discover('list_channels', ctx, run_id, run_token))
+
+
+def search_documents(run_id: Annotated[str, Field(min_length=1, max_length=40)],
+                     run_token: Annotated[str, Field(min_length=1, max_length=128)], ctx: Context,
+                     query: Annotated[str, Field(max_length=500)] = '',
+                     channel_id: Identifier | None = None,
+                     limit: Annotated[int, Field(ge=1, le=25, strict=True)] = 10,
+                     offset: Annotated[int, Field(ge=0, le=10000, strict=True)] = 0) -> SearchListing:
+    """FTS5 title/content search; empty query browses the authorized catalog. Fetch each ID
+    with get_document before quoting evidence. Search snippets do not verify retrieval."""
+    return SearchListing(**_discover('search_documents', ctx, run_id, run_token, query=query,
+                     channel_id=channel_id, limit=limit, offset=offset))
+
+
+def similar_documents(run_id: Annotated[str, Field(min_length=1, max_length=40)],
+                      run_token: Annotated[str, Field(min_length=1, max_length=128)],
+                      document_id: Identifier, ctx: Context,
+                      limit: Annotated[int, Field(ge=1, le=25, strict=True)] = 5) -> SimilarityListing:
+    """Classical TF-IDF cosine similarity within this run's current document versions.
+    Scores are lexical relevance, never classifications. Fetch results with get_document."""
+    return SimilarityListing(**_discover('similar_documents', ctx, run_id, run_token, document_id=document_id, limit=limit))
+
+
+def enable_discovery_tools():
+    if not _state['discovery_tools']:
+        for tool in (list_channels, search_documents, similar_documents):
+            mcp.add_tool(tool, annotations=READ_ONLY)
+        _state['discovery_tools'] = True
 
 
 def record_finding(
@@ -210,6 +281,8 @@ def record_finding(
     reason: Annotated[str, Field(min_length=1, max_length=1000,
                                  description="Which policy field or rule justifies the category")],
     ctx: Context,
+    proposed_content: Annotated[str | None, Field(max_length=workflow.MAX_CONTENT,
+        description="Optional full correction for OUTDATED only; validated but never published")] = None,
 ) -> FindingReceipt:
     """Record your classification of ONE document for the current analysis run. Call it once per
     document, after retrieving the policy and that document. It only stores a finding for human
@@ -222,7 +295,7 @@ def record_finding(
                 store(), run_id=run_id, run_token=run_token, policy_id=policy_id,
                 policy_version=policy_version, document_id=document_id,
                 document_version=document_version, classification=classification,
-                evidence=evidence, reason=reason, actor=f"mcp:{meta['user_agent']}")
+                evidence=evidence, reason=reason, proposed_content=proposed_content, actor=f"mcp:{meta['user_agent']}")
         except workflow.WorkflowError as exc:
             raise ToolError(f"{exc.code}: {exc}") from exc
         meta.update(finding_id=finding.id, duplicate=duplicate, run_id=finding.run_id)
@@ -350,6 +423,8 @@ def main() -> None:
         enable_write_tools(host)
     if config.findings_tool_enabled():
         enable_findings_tool(host)
+    if config.discovery_enabled():
+        enable_discovery_tools()
 
     log.info("Undrift MCP %s listening on http://127.0.0.1:%d%s", SERVER_VERSION, port,
              config.mcp_path("<redacted>"))

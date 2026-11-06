@@ -24,7 +24,7 @@ import config
 import fixtures
 from models import AgentRun, Document, Event, Finding, Policy, Proposal
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 EVENT_TYPE_RE = re.compile(r"^[a-z_]+(\.[a-z_]+)+$")
 SYSTEM = "system"
 
@@ -217,7 +217,7 @@ class Store:
             conn.close()
 
     def init(self, seed: bool = True) -> bool:
-        """Transactional, additive v1/v2 migration. Never resets policies or proposals."""
+        """Transactional, additive v1/v2/v3 migration. Never resets policies or proposals."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
         conn = self.connect()
         try:
@@ -257,9 +257,16 @@ class Store:
                                  "submission_sha256, created_at, 'legacy' FROM findings_v2")
                     conn.execute("DROP TABLE findings_v2")
                     conn.execute("DROP TABLE agent_runs_v2")
-                self._import_legacy_runs(conn)
+                if version < 3:
+                    self._import_legacy_runs(conn)
                 conn.execute("INSERT OR IGNORE INTO store_metadata VALUES ('database_id', ?)",
                              (uuid.uuid4().hex,))
+                from discovery_schema import STATEMENTS
+                for statement in STATEMENTS:
+                    conn.execute(statement)
+                conn.execute("DELETE FROM document_search")
+                conn.execute("INSERT INTO document_search SELECT d.id, d.channel_id, v.version, d.title, v.content "
+                             "FROM documents d JOIN document_versions v ON v.document_id=d.id AND v.version=d.current_version")
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             conn.execute("COMMIT")
         except BaseException:
@@ -273,6 +280,11 @@ class Store:
     def identity(self) -> str:
         with self.read() as conn:
             return conn.execute("SELECT value FROM store_metadata WHERE key = 'database_id'").fetchone()[0]
+
+    def metadata(self, key: str, conn: sqlite3.Connection | None = None) -> str | None:
+        with self.read(conn) as c:
+            row = c.execute('SELECT value FROM store_metadata WHERE key=?', (key,)).fetchone()
+            return row[0] if row else None
 
     def _import_legacy_runs(self, conn: sqlite3.Connection) -> None:
         """Freeze historical event-based runs once; old evidence files remain optional."""
@@ -494,15 +506,18 @@ class Store:
 
     def findings(self, run_id: str | None = None, document_id: str | None = None,
                  conn: sqlite3.Connection | None = None) -> list[Finding]:
-        sql, args = "SELECT * FROM findings WHERE 1 = 1", []
+        sql, args = "SELECT f.* FROM findings f WHERE 1 = 1", []
         if run_id:
-            sql += " AND run_id = ?"
+            sql += " AND f.run_id = ?"
             args.append(run_id)
         if document_id:
-            sql += " AND document_id = ?"
+            sql += " AND f.document_id = ?"
             args.append(document_id)
         with self.read(conn) as c:
-            return [self._finding(r) for r in c.execute(sql + " ORDER BY created_at, id", args)]
+            # Read-only compatibility with archived v3 stores; no implicit migrations.
+            if c.execute("SELECT 1 FROM sqlite_master WHERE name='finding_corrections'").fetchone():
+                sql = sql.replace('SELECT f.* FROM findings f', 'SELECT f.*, fc.proposed_content FROM findings f LEFT JOIN finding_corrections fc ON fc.finding_id=f.id')
+            return [self._finding(r) for r in c.execute(sql + " ORDER BY f.created_at, f.id", args)]
 
     def reap_runs(self) -> int:
         """Expire capabilities and interrupted runner leases, once, with audit events."""

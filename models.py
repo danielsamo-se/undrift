@@ -98,3 +98,4 @@ class Finding(BaseModel):
     retrieved_during_run: bool
     created_at: datetime
     source: Literal["mcp", "final_json", "legacy"] = "mcp"
+    proposed_content: str | None = None
