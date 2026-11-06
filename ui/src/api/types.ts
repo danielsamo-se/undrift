@@ -112,6 +112,8 @@ export interface TraceStep {
 }
 
 export interface RunSummary {
+  conversation_id?: string | null;
+  awaiting_clarification?: boolean;
   document_outcomes?: Record<string, { action: string; proposal_id?: string }>;
   id: string;
   status: "open" | "completed" | "incomplete" | "failed" | "expired" | "interrupted";
@@ -129,6 +131,30 @@ export interface RunSummary {
   errors: string[];
   event_range: [number, number];
   record_file: string | null;
+}
+
+export interface NativeQuestion {
+  id: string;
+  document_id: string;
+  document_version: number;
+  policy_version: number;
+  prompt: string;
+  options: string[];
+  evidence: string;
+  answer: string | null;
+  answered_by: string | null;
+}
+
+export interface Conversation {
+  continuation_blocker?: string | null;
+  reported_total_cost?: string | null;
+  id: string;
+  thread_id: string | null;
+  state: string;
+  max_turns: number;
+  max_total_steps: number;
+  max_reported_cost: string;
+  phases: { run_id: string; ordinal: number; message_id: string | null; state: string; cost: Cost | null; questions: NativeQuestion[] }[];
 }
 
 export interface Verdict {

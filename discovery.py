@@ -124,11 +124,20 @@ def validate_search_strategy(store, run, conn):
     """
     if run.metadata.get('discovery_strategy') != 'search_first_v1':
         return {'enforced': False}
+    # Native follow-ups retain the original search evidence and shared budget.
+    # Context versions/scope are pinned when the trusted runner opens each phase.
+    from clarification import phase
+    p = phase(store, run.id, conn)
+    run_ids = {run.id}
+    if p:
+        run_ids = {row[0] for row in conn.execute(
+            'SELECT run_id FROM conversation_phases WHERE conversation_id=? AND ordinal<=?',
+            (p['conversation_id'], p['ordinal']))}
     events = []
     for row in conn.execute("SELECT seq,type,subject_id,status,metadata FROM events "
                             "WHERE type IN ('agent.discovery','agent.retrieval','mcp.tool_call') ORDER BY seq"):
         meta = json.loads(row['metadata'])
-        if meta.get('run_id') == run.id:
+        if meta.get('run_id') in run_ids:
             events.append((row, meta))
     searches = [(row, meta) for row, meta in events if row['type'] == 'agent.discovery'
                 and meta.get('operation') == 'search_documents']

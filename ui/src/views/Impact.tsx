@@ -2,6 +2,7 @@ import { Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ImpactSnapshot } from "../api/types";
 import { DocumentPanel } from "../components/DocumentPanel";
+import { Clarifications } from '../components/Clarifications';
 import { ImpactBoard } from "../components/ImpactBoard";
 import { ErrorState, LoadingBlock, PolicyVersion, StatusDot } from "../components/ui";
 import { consistency, liveDocuments } from "../lib/board";
@@ -40,6 +41,7 @@ function Impact({ snap, selectedId }: { snap: ImpactSnapshot; selectedId: string
         </div>
       </header>
 
+      <Clarifications />
       <div className="toolbar">
         <label className="search">
           <Search size={13} aria-hidden />

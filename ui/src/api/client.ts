@@ -10,6 +10,7 @@ import type {
   RunSummary,
   Publication,
   PublicationPlan,
+  Conversation,
 } from "./types";
 
 export class ApiError extends Error {
@@ -76,6 +77,9 @@ function authorized<T>(path: string, body: unknown): Promise<T> {
 const enc = encodeURIComponent;
 
 export const api = {
+  conversations: (signal?: AbortSignal) => request<{ conversations: Conversation[] }>('/api/conversations', { signal }),
+  answerQuestion: (id: string, body: { option: number } | { text: string }) =>
+    authorized<{ question_id: string; status: string }>(`/api/questions/${enc(id)}/answer`, body),
   publication: (id: string, signal?: AbortSignal) =>
     request<{ configured: boolean; publication: Publication | null }>(`/api/proposals/${enc(id)}/publication`, { signal }),
   publicationPlan: (id: string) => authorized<{ plan: PublicationPlan }>(`/api/proposals/${enc(id)}/publication/plan`, {}),

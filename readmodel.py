@@ -135,6 +135,8 @@ def agent_runs(store: Store, runs_dir: Path = RUNS_DIR,
         meta = run.metadata
         record = records.get(run.message_id or '')
         seqs = [e.seq for e in related]
+        from clarification import phase
+        current_phase = phase(store, run.id)
         result.append({
             'id': run.id, 'status': run.status, 'policy_id': run.policy_id,
             'policy_version': run.policy_version, 'document_ids': run.document_ids,
@@ -142,6 +144,9 @@ def agent_runs(store: Store, runs_dir: Path = RUNS_DIR,
             'finished_at': run.closed_at.isoformat() if run.closed_at else None,
             'expires_at': run.expires_at.isoformat(), 'duration_s': meta.get('duration_s'),
             'agent_id': run.agent_id, 'thread_id': run.thread_id, 'message_id': run.message_id,
+            'conversation_id': current_phase['conversation_id'] if current_phase else None,
+            'phase': current_phase['ordinal'] if current_phase else None,
+            'awaiting_clarification': bool(meta.get('awaiting_clarification')),
             'cost': meta.get('cost'), 'retrieval': meta.get('retrieval') or workflow.retrieval_status(store, run),
             'document_outcomes': meta.get('document_outcomes', {}),
             'mcp_calls': [_call(e) for e in related if e.type == 'mcp.tool_call'],

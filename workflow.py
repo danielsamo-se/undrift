@@ -524,16 +524,18 @@ def _normalize(text: str) -> str:
 
 def open_run(store: Store, policy_id: str, document_ids: list[str], *, actor: str,
              agent_id: str | None = None, ttl: timedelta = RUN_TTL,
-             metadata: dict[str, Any] | None = None) -> tuple[AgentRun, str]:
+             metadata: dict[str, Any] | None = None,
+             _conn: sqlite3.Connection | None = None) -> tuple[AgentRun, str]:
     """Only trusted local orchestration mints these short-lived capabilities."""
     if not document_ids or len(set(document_ids)) != len(document_ids):
         raise WorkflowError("document_ids must be a non-empty list without duplicates")
     if not timedelta(0) < ttl <= RUN_TTL:
         raise WorkflowError("run lifetime must be positive and at most 30 minutes")
-    store.reap_runs()
+    if _conn is None:
+        store.reap_runs()
     run_id, token = f"run-{secrets.token_hex(8)}", "urt_" + secrets.token_urlsafe(32)
     created = datetime.now(UTC)
-    with store.write() as conn:
+    with store.write(_conn) as conn:
         policy = store.policy(policy_id, conn=conn)
         if policy is None:
             raise NotFound("unknown policy")

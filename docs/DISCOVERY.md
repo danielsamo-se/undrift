@@ -1,5 +1,9 @@
 # Step 2: unified Shiftly discovery foundation
 
+Native question capture and explicitly authorized same-thread continuation are
+implemented locally; activation and a real development test are still required.
+See [CLARIFICATION.md](CLARIFICATION.md) for lifecycle, limits and live-test steps.
+
 Step 1 checkpoint: `59c34aa` contains the live MCP findings workflow and reviewed
 GitHub/production verification implementation. Historical databases, journals,
 credentials, runs/ traces and private operator tools remain ignored archives.

@@ -24,7 +24,7 @@ import config
 import fixtures
 from models import AgentRun, Document, Event, Finding, Policy, Proposal
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 EVENT_TYPE_RE = re.compile(r"^[a-z_]+(\.[a-z_]+)+$")
 SYSTEM = "system"
 
@@ -263,6 +263,9 @@ class Store:
                              (uuid.uuid4().hex,))
                 from discovery_schema import STATEMENTS
                 for statement in STATEMENTS:
+                    conn.execute(statement)
+                from clarification_schema import STATEMENTS as CLARIFICATION_STATEMENTS
+                for statement in CLARIFICATION_STATEMENTS:
                     conn.execute(statement)
                 conn.execute("DELETE FROM document_search")
                 conn.execute("INSERT INTO document_search SELECT d.id, d.channel_id, v.version, d.title, v.content "

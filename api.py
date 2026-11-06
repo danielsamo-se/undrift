@@ -27,6 +27,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import config
+import clarification
 import readmodel
 import workflow
 from store import Store
@@ -50,6 +51,12 @@ class ReviewBody(BaseModel):
 
 class EmptyBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class ClarificationAnswerBody(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    option: int | None = Field(default=None, ge=0, strict=True)
+    text: str | None = Field(default=None, min_length=1, max_length=4000)
 
 
 class PolicyChangeBody(BaseModel):
@@ -234,6 +241,16 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
                                            ("session", "reviewer"))
         return JSONResponse({"reviewer": reviewer})
 
+    async def conversations(_: Request) -> JSONResponse:
+        await run_in_threadpool(store.reap_runs)
+        return JSONResponse({'conversations': await run_in_threadpool(clarification.listing, store)})
+
+    async def answer_question(request: Request) -> JSONResponse:
+        body = await _body(request, ClarificationAnswerBody)
+        result = await run_in_threadpool(clarification.answer, store, request.path_params['question_id'],
+                                        token=_token(request), **body.model_dump())
+        return JSONResponse(result)
+
     async def change_policy(request: Request) -> JSONResponse:
         body = await _body(request, PolicyChangeBody)
         new, candidates = await run_in_threadpool(workflow.change_policy,
@@ -302,6 +319,8 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
             Route("/api/runs", runs),
             Route("/api/runs/{run_id}", run),
             Route("/api/session", session, methods=["POST"]),
+            Route('/api/conversations', conversations),
+            Route('/api/questions/{question_id}/answer', answer_question, methods=['POST']),
             Route("/api/proposals", proposals),
             Route("/api/proposals/{proposal_id}", proposal),
             Route("/api/proposals/{proposal_id}/approve", review("approve"), methods=["POST"]),
