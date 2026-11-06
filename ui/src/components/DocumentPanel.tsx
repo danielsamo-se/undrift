@@ -58,7 +58,10 @@ export function DocumentPanel({ doc, channel, policy, onClose }: {
         )}
       </div>
 
-      {f?.verified_conclusion === false && <p className="note note-warn">Provisional {f.category} finding: this analysis has not established a verified conclusion.</p>}
+      {f?.action === "needs_clarification" && <p className="note note-warn">Human clarification required. Resolve the missing context in the finding reason before correcting this document.</p>}
+      {f?.action === "manual_only" && <p className="note note-warn">Protected channel. Legal and CRM documents require a separate manual editing workflow; no automated correction is permitted.</p>}
+      {f?.action === "needs_correction" && <p className="note note-warn">The finding is validated, but a safe correction still needs human review.</p>}
+      {f?.verified_conclusion === false && f.action !== "needs_clarification" && <p className="note note-warn">Provisional {f.category} finding: this analysis has not established a verified conclusion.</p>}
       {Boolean(doc.provisional_findings?.length) && <div className="insp-block">
         <h3>Provisional findings</h3>
         {doc.provisional_findings?.map((item) => <details key={item.id}>

@@ -28,6 +28,7 @@ export interface Channel {
 }
 
 export interface Finding {
+  action?: "needs_clarification" | "manual_only" | "needs_correction" | "proposed" | "no_change" | null;
   id?: string;
   run_status?: string;
   verified_conclusion?: boolean;
@@ -111,6 +112,7 @@ export interface TraceStep {
 }
 
 export interface RunSummary {
+  document_outcomes?: Record<string, { action: string; proposal_id?: string }>;
   id: string;
   status: "open" | "completed" | "incomplete" | "failed" | "expired" | "interrupted";
   started_at: string;

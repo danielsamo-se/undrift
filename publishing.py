@@ -362,6 +362,8 @@ class Publisher:
             if p.status != 'approved' or not p.reviewed_by:
                 raise workflow.Conflict('Publishing requires a human-approved proposal')
             doc = self.store.document(p.document_id, conn=c)
+            if doc is not None:
+                workflow.require_automatic_correction_allowed(doc)
             policy = self.store.policy(p.policy_id, conn=c)
             if (p.document_id != self.target.document_id or not doc or not policy
                     or doc.version != p.base_version or doc.content != p.original_content

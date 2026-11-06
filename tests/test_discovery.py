@@ -249,7 +249,7 @@ def test_ground_truth_is_not_in_seed_database_or_runtime_sources(demo):
     assert len(TRUTH) == 24 and set(TRUTH) == set(demo.document_ids())
 
 
-def test_full_ambiguous_corpus_retains_findings_but_blocks_all_proposals(demo):
+def test_ambiguous_corpus_without_corrections_retains_findings_without_inventing_proposals(demo):
     run, token = open_run(demo, retrieve=True)
     for did in run.document_ids:
         workflow.record_finding(demo, **payload(demo, run, token, did))
@@ -260,18 +260,21 @@ def test_full_ambiguous_corpus_retains_findings_but_blocks_all_proposals(demo):
     assert demo.proposals() == []
 
 
-def test_complete_actionable_scope_creates_seven_guarded_proposals(demo):
+def test_actionable_scope_creates_six_proposals_and_reserves_crm_for_manual_review(demo):
     ids = [did for did, category in TRUTH.items() if category == 'OUTDATED']
     run, token = open_run(demo, ids, retrieve=True)
     for did in ids:
         original = demo.document(did).content
         unchanged = workflow.split_sentences(original)[1:]
         correction = CORRECTION + (' ' + ' '.join(unchanged) if unchanged else '')
-        workflow.record_finding(demo, **payload(demo, run, token, did, proposed_content=correction))
+        changes = {} if demo.document(did).channel in workflow.MANUAL_ONLY_CHANNELS else {'proposed_content': correction}
+        workflow.record_finding(demo, **payload(demo, run, token, did, **changes))
     result = workflow.ingest_agent_reply(demo, reply(demo, run), actor='agent:test', provenance={},
                                        run_id=run.id, execution_status='success')
-    assert not result['errors'] and len(result['proposals']) == 7
-    assert demo.run(run.id).status == 'completed'
+    assert len(result['proposals']) == 6
+    assert result['document_outcomes']['crm-004']['action'] == 'manual_only'
+    assert demo.run(run.id).status == 'incomplete'
+    assert not demo.proposals(document_id='crm-004')
     assert all(p.status == 'pending_review' for p in demo.proposals())
     assert all(p.document_id in ids for p in demo.proposals())
 

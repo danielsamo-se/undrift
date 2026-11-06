@@ -94,6 +94,18 @@ describe("buildLanes", () => {
 });
 
 describe("consistency and next action", () => {
+  it("counts only individually validated conclusions from a reconciled partial run", () => {
+    const known = doc("known", "web", "UNRELATED");
+    known.finding = { ...known.finding!, run_status: "incomplete", verified_conclusion: true, action: "no_change" };
+    const ambiguous = doc("ambiguous", "web", "UNKNOWN");
+    ambiguous.finding = { ...ambiguous.finding!, run_status: "incomplete", verified_conclusion: false, action: "needs_clarification" };
+    const failed = doc("failed", "web", "UNRELATED");
+    failed.finding = { ...failed.finding!, run_status: "failed", verified_conclusion: false };
+    const c = consistency(snap([known, ambiguous, failed]));
+    expect(c.consistent).toBe(1);
+    expect(c.unknown).toBe(2);
+    expect(c.drifted).toBe(0);
+  });
   it("counts drift, stale and unanalysed separately", () => {
     const stale = doc("d4", "web", "OUTDATED");
     stale.finding!.current = false;

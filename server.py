@@ -68,6 +68,7 @@ def use_store(s: Store) -> None:
 
 
 class Health(BaseModel):
+    discovery_strategy: str | None = None
     status: Literal["ok"]
     server: str
     version: str
@@ -161,6 +162,7 @@ def health_check(ctx: Context) -> Health:
             server=SERVER_NAME,
             version=SERVER_VERSION,
             database_id=store().identity(),
+            discovery_strategy='search_first_v1' if _state['discovery_tools'] else None,
             read_only=not _state["findings_tool"],
             tools=READ_TOOLS + (DISCOVERY_TOOLS if _state['discovery_tools'] else []) + (["record_finding"] if _state["findings_tool"] else []),
             policy_ids=store().policy_ids(),

@@ -184,3 +184,21 @@ def test_completed_worker_wins_simultaneous_heartbeat_failure(changed, monkeypat
     monkeypatch.setattr(asyncio, 'wait', both_done)
     assert asyncio.run(run_impact.paid_run(None, changed, 'a', 'undrift', 8)) == 0
     assert changed.runs()[0].status == 'completed'
+
+
+def test_reconciled_partial_run_is_not_reported_as_a_heartbeat_failure(changed, monkeypatch):
+    async def worker(client, store, agent_id, connection, max_steps, run_id, *rest):
+        workflow.close_run(store, run_id, status='incomplete', actor='test',
+                           metadata={'finalization': 'per_document_v1', 'verified_document_ids': []})
+        return 1  # Needs clarification, not a runner crash.
+    async def immediate_sleep(_):
+        return None
+    async def heartbeat_first(tasks, **kwargs):
+        await asyncio.gather(*tasks, return_exceptions=True)
+        heartbeat = next(task for task in tasks if task.get_coro().__name__ == 'heartbeat')
+        return {heartbeat}, set(tasks) - {heartbeat}
+    monkeypatch.setattr(run_impact, '_paid_run', worker)
+    monkeypatch.setattr(asyncio, 'sleep', immediate_sleep)
+    monkeypatch.setattr(asyncio, 'wait', heartbeat_first)
+    assert asyncio.run(run_impact.paid_run(None, changed, 'a', 'undrift', 8)) == 1
+    assert changed.runs()[0].status == 'incomplete'

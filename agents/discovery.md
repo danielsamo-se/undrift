@@ -11,6 +11,39 @@ in quoted evidence, reasons, corrections or your response. Tools may be availabl
 through the integration subagent; this is the intended setup. Request complete,
 unmodified tool results, including versions and full document content.
 
+Discovery budget for this 24-document run:
+- Use at most 12 search_documents calls in total, including empty-query catalog
+  pages and any failed calls or retries. Before ANY empty-query catalog call, make
+  at least three distinct, meaningful non-empty searches. Use different concepts,
+  not reordered terms: policy terminology/periods, a conceptual paraphrase without
+  numbers, and conditional eligibility or earlier promises. Choose actual words
+  from the policy and retrieved leads; do not use a fixed list of document IDs.
+  Plan roughly 8-10 useful searches/catalog calls only when they add information.
+  Reserve at least two of the 12 calls for catalog enumeration or its retry.
+- Use at most 4 similar_documents calls, including failures or retries. Choose
+  different useful reference documents; similarity is optional when it adds no leads.
+- These are shared run-wide budgets, including every nested call made by the MCP
+  integration subagent. Tell delegates the remaining budget and track actual calls;
+  delegating again does not reset it. Do not repeat searches that add no coverage.
+- Follow relevant search leads with get_document before catalog enumeration.
+  Refine a query from retrieved wording when it reveals a useful new formulation
+  or unresolved condition. FTS5 matches literal words using OR, not semantic
+  embeddings: choose short synonyms/paraphrases yourself, without Boolean syntax
+  or filler. Do not infer relevance or a classification from a score alone.
+- AFTER the formulated searches and lead retrieval, enumerate the full authorized
+  catalog with search_documents(query="", limit=25) and offset pagination if needed.
+  Reconcile unique IDs with list_channels counts; a catalog dump is a completeness
+  check, never a substitute for formulated search. Retrieve remaining documents.
+  Search-budget exhaustion must not skip already discovered documents: continue
+  get_document and record_finding for every authorized ID. Retrieval and finding
+  calls are outside the search/similarity budgets; retry a failed retrieval once.
+  If catalog coverage remains incomplete, do not claim complete coverage or invent
+  undiscovered document IDs. Never rewrite an accepted finding to explain a gap.
+- The runner's max_steps limits parent execution rounds, not nested MCP call counts
+  or spend. Respect that separate execution limit; these instruction budgets do
+  not extend it. Keep enough execution capacity for retrieval, individual findings
+  and final JSON, rather than using every search call unnecessarily.
+
 1. Retrieve the current authoritative policy with get_policy, including its version,
    period, effective date, scope and exceptions.
 2. Call list_channels to discover available channels and document counts. The user
@@ -23,11 +56,26 @@ unmodified tool results, including versions and full document content.
 3. Retrieve every document with get_document. Search snippets and similarity scores
    do not establish authenticated retrieval. Preserve the actual version and exact
    full text. If a tool fails, retry retrieval once; do not invent missing facts.
-4. Classify each document: OUTDATED for general eligibility claims contradicting
-   current policy; VALID_DISTINCT for independent statutory rights;
-   EXISTING_COMMITMENT for protected earlier promises; UNRELATED for unaffected
-   subjects; UNKNOWN when scope or information is genuinely unclear. A historical
-   number, processing deadline or product test duration is not a return entitlement.
+4. Classify the full retrieved document using this decision rule:
+   - VALID_DISTINCT: an explicitly independent statutory right.
+   - EXISTING_COMMITMENT: an earlier promise whose protected purchase/order context
+     is actually established by the retrieved facts. Do not invent a purchase date.
+   - OUTDATED: a general return-eligibility statement contradicting current policy.
+   - UNKNOWN: return eligibility, its applicable period, or the relevant promise
+     depends on contextual facts not available in the retrieved policy/document.
+     Examples of missing facts are purchase date, the customer's original offer,
+     whether a promotion applies, or its terms. This includes hedged, conditional
+     or deferred return advice even when it states no number or no contradiction.
+     Explain the missing fact and the clarification question a human must answer.
+   - UNRELATED: the document concerns an independent subject and needs no unresolved
+     return-policy fact to establish that independence. Shipping charges, record
+     retention, product testing and a processing-only deadline can qualify.
+   Absence of a contradiction is NOT enough for UNRELATED. A document combining an
+   independent processing duration with unresolved eligibility is UNKNOWN as a
+   whole; do not classify it solely from its harmless number. Clear statutory or
+   grandfathered facts remain protected; do not confuse known protection with
+   an unknown applicability condition. UNKNOWN is a valid analysis result, not a
+   failure to avoid in order to obtain proposals.
 5. Immediately call record_finding for each result, with policy_id, policy_version,
    document_id, document_version, classification, an exact evidence quote, and reason.
    Retain the accepted category, version, evidence and reason unchanged. Identical
@@ -35,7 +83,10 @@ unmodified tool results, including versions and full document content.
    UNKNOWN after failed retrieval uses document_version=null and evidence="". If
    policy retrieval fails, use UNKNOWN and policy_version=null rather than guessing.
 6. Optionally supply proposed_content only for OUTDATED findings. It is the full
-   corrected document, not a diff. Change only simple eligibility sentences and
+   corrected document, not a diff. Legal and CRM channels are classification-only:
+   NEVER supply a correction for them, even when OUTDATED. Explain the need for
+   separate manual review. Classification cannot authorize editing these channels.
+   For other channels, change only simple eligibility sentences and
    copy every other sentence exactly. Preserve statutory rights, shipping charges,
    processing deadlines, conditions and existing commitments. Ambiguous mixed
    sentences need human review; do not delete unrelated clauses to make a patch fit.
@@ -44,8 +95,11 @@ unmodified tool results, including versions and full document content.
    - Purchases made before <YYYY-MM-DD> keep the return period promised at the time of purchase.
    - Optional: Your statutory 14-day right of withdrawal is not affected.
    Omit the correction if you cannot safely produce one. MCP records findings only;
-   trusted local finalization creates pending proposals after validation. UNKNOWN or
-   incomplete retrieval prevents all proposals for that run.
+   trusted local finalization creates pending proposals after validation. UNKNOWN
+   requires human clarification and never receives a correction. In discovery runs,
+   an honest UNKNOWN blocks only that document; independently retrieved and
+   validated corrections may become pending proposals. Failed execution, missing
+   scope, stale versions or contradictory final output still fail closed globally.
 
 Finish with exactly one JSON code block, no following text:
 

@@ -59,7 +59,12 @@ def build_prompt(policy_id: str, document_ids: list[str], run_id: str, run_token
             f'Retrieve policy {policy_id!r}. Discover the available channels and document counts with list_channels. '
             'Use search_documents (including empty-query paginated browsing) and similar_documents to inspect the '
             'entire authorized corpus, without asking the user for document IDs. Search results are leads, not '
-            'verified retrieval. Pass run_id and run_token to EVERY discovery, retrieval and finding call, '
+            'verified retrieval. Before catalog browsing, perform at least three distinct non-empty searches '
+            'using different formulations, including one without numbers, and retrieve relevant search leads. '
+            'Use similarity only when it adds useful leads. Legal and CRM documents are classification-only; '
+            'never submit proposed_content for those channels. UNKNOWN means a return-policy conclusion '
+            'depends on unresolved facts; absence of a contradiction does not make a document UNRELATED. '
+            'Pass run_id and run_token to EVERY discovery, retrieval and finding call, '
             'including through the integration subagent. Retrieve each document in full with get_document '
             'before using its exact quoted evidence. Record each finding immediately with record_finding. '
             'An optional proposed_content is allowed only for OUTDATED findings and must preserve all protected '
@@ -119,10 +124,11 @@ async def mcp_ready(store: Store, discovery: bool = False) -> bool:
             shared = not health.is_error and (health.structured_content or {}).get('database_id') == store.identity()
             ready = shared and scoped and 'record_finding' in available
             if discovery:
-                ready = ready and store.metadata('demo_profile') == 'shiftly-discovery-v1' and all(
+                strategy = (health.structured_content or {}).get('discovery_strategy')
+                ready = ready and strategy == 'search_first_v1' and store.metadata('demo_profile') == 'shiftly-discovery-v1' and all(
                     name in available and {'run_id', 'run_token'} <= set(available[name].input_schema.get('required', []))
                     for name in ('list_channels', 'search_documents', 'similar_documents'))
-                out(f'Discovery endpoint scoped tools and unified profile: {ready}')
+                out(f'Discovery endpoint scoped tools and unified profile: {ready}; strategy={strategy}')
             out(f"MCP endpoint record_finding {'available' if 'record_finding' in available else 'unavailable'}; "
                 f"scoped_reads={scoped}; shared_database={shared}")
             return ready
@@ -138,7 +144,7 @@ async def paid_run(client: AsyncCominty, store: Store, agent_id: str, connection
     agent_run, run_token = workflow.open_run(store, fixtures.POLICY_ID, document_ids,
         actor=actor, agent_id=agent_id, ttl=workflow.RUN_TTL,
         metadata={'max_steps': max_steps,
-            **({'discovery': True, 'seed_sha256': store.metadata('seed_sha256'),
+            **({'discovery': True, 'discovery_strategy': 'search_first_v1', 'seed_sha256': store.metadata('seed_sha256'),
                 'instructions_sha256': hashlib.sha256((ROOT / 'agents/discovery.md').read_bytes()).hexdigest(),
                 'expected_model': os.environ.get('UNDRIFT_EXPECTED_MODEL')} if discovery else {})})
 
@@ -159,8 +165,11 @@ async def paid_run(client: AsyncCominty, store: Store, agent_id: str, connection
             raise TimeoutError('analysis lifetime exceeded')
         if work in done:
             return await work
-        if task in done and store.run(agent_run.id).status == 'completed':
-            return await work
+        if task in done:
+            current = store.run(agent_run.id)
+            if current.status == 'completed' or (current.status == 'incomplete'
+                    and current.metadata.get('finalization') == 'per_document_v1'):
+                return await work
         if task in done:
             await task
             raise RuntimeError('runner heartbeat stopped')

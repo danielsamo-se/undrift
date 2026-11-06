@@ -75,16 +75,23 @@ and corrections are immutable; identical concurrent retries deduplicate. No MCP
 tool creates proposals, renews leases, approves, applies, publishes or mints tokens.
 The trusted runner reconciles final JSON and atomically creates pending proposals.
 Discovery findings may omit a correction; final JSON may reuse an accepted one.
-UNKNOWN findings or incomplete authenticated retrieval still block all proposals
-for that run, as in the existing safety policy. The ambiguous full corpus can thus
-finish as incomplete while retaining all its findings. A complete, explicitly
-bounded actionable scope can demonstrate proposal creation without relaxing this
-rule. Do not classify uncertain text as certain just to obtain proposals.
+For discovery runs, successful whole-batch reconciliation now records independent
+document outcomes. UNKNOWN or failed document retrieval requires clarification for
+that document; other authenticated, validated corrections may produce pending
+proposals in the same atomic transaction. The run remains incomplete while any
+document needs clarification, a correction or manual channel review. Only explicitly
+certified document conclusions can count toward consistency in such a partial run.
+Failed execution, stale versions, invalid evidence, missing scope or contradictions
+still block the whole batch. Older non-discovery workflows retain their strict
+whole-run retrieval/UNKNOWN gate. Do not classify uncertain text as certain to
+obtain proposals. Legal/CRM channels cannot receive automated corrections even
+when classified OUTDATED; this also gates approval/application of old proposals.
 
 ## Preparing the first live run (not performed)
 
-`agents/discovery.md` is a local instruction candidate. It has NOT been installed
-remotely. `run_impact.py --discovery` no longer supplies a document list to the
+`agents/discovery.md` is the instruction source to install through the existing
+SDK's instruction-only agent update, after operator approval. Discovery mode in
+`run_impact.py` no longer supplies a document list to the
 agent: the trusted scope pins versions internally while the agent discovers IDs.
 It checks this profile, scoped discovery schemas, shared endpoint DB, model and
 remote instruction match before any spending. It requires an explicitly selected
@@ -107,14 +114,67 @@ $env:UNDRIFT_MCP_FINDINGS_PUBLIC = '1'
 .\.venv\Scripts\python.exe run_impact.py --discovery --max-steps 40
 ```
 
-The current ngrok target and running services still use the archived demos; no
-unified database endpoint is active yet. The existing remote instructions describe
-the older workflow, so the discovery instruction gate should fail until explicitly
-updated and reverified. Twenty-four documents need a deliberate budget; eight old
-default tool rounds are not an adequate experiment design.
+The coordinated November 6 activation uses the existing ngrok hostname and
+`undrift_mcp_ngrok`, MCP port 8001 and Review API/UI port 8401 against
+`data/unified-demo-v1.db`. Archived Review services on 8101 and 8301 remain separate;
+their databases and verified publishing evidence are unchanged. Process-local
+overrides and verification evidence live in ignored `.tools/unified-*.json` files.
+The full MCP URL contains a private path and must never be printed in instructions,
+logs or reports. The remote instruction gate must match the current local file
+before execution; a successful update never authorizes a paid run.
+
+For the 24-document corpus, instructions cap `search_documents` at 12 calls and
+`similar_documents` at 4, counting catalog pages, retries and calls delegated to
+the integration subagent. Around 8-10 useful searches/catalog calls are a planning
+target, not a required minimum. At least two search calls are reserved for catalog
+coverage or its retry; catalog enumeration and count reconciliation protect recall.
+The budget does not cap authenticated retrieval or individual finding submissions.
+The local refinement additionally requires three distinct non-empty formulated
+queries, including one without numbers, and retrieval of an available search lead
+before catalog enumeration. New runs carry `discovery_strategy=search_first_v1`;
+finalization checks actual audit events rather than an agent's claimed behavior.
+Term-order variations do not count as distinct queries. Catalog completeness and
+observed 12/4 budgets are checked; similarity remains optional. This is an
+observable protocol check, not a test of the semantic quality of query choices.
+Failed calls contribute to budgets when attributed by MCP instrumentation.
+Query text is redacted/validated before bounded audit storage; full query hashes
+remain available when stored text is truncated. Nothing regrades historical runs.
+
+The runner command above keeps the existing explicit `--max-steps 40` limit;
+the script's default remains 8. Parent execution steps and nested MCP calls are
+different units: neither limit guarantees the other, completion or a monetary cap.
+Search limits are instruction-level constraints with finalization-time audit checks,
+not server-enforced request quotas or a monetary cap.
+Review actual nested calls after the first run before designing repeated evaluations.
+
+On November 6 the approved instruction-only SDK update completed and the unified
+free preflight returned exit code 0. The normalized local and remote instruction
+SHA-256 was `f5d9f0ee29a84ddd22b2f4299777afb7ce11259d45051a30e190c211c4498dcc`.
+Only the agent's instructions changed; the Claude Sonnet 5.5 (High) model,
+capabilities and `undrift_mcp_ngrok` allowlist and integration metadata were
+unchanged. No paid execution occurred. The private operator report is
+`.tools/discovery-instruction-verification.json`.
+
 Confirm Cominty has rediscovered all seven tool schemas after the coordinated MCP
 switch; a direct local preflight does not prove a cached integration manifest has
-been refreshed. Keep ground-truth test data outside all connected agent sources.
+been refreshed. Both the SDK model and raw `GET /mcp/manifest` omit cached tool
+definitions, so the successful free preflight cannot certify that cache. Inspect
+the existing integration's tool list in Cominty; use its connection-test or
+tool-refresh control if one is available, without creating another integration.
+Expected tools are `health_check`, `get_policy`, `get_document`, `list_channels`,
+`search_documents`, `similar_documents` and `record_finding`. If the UI offers no
+such view/control, cache recognition remains unverified until an approved live
+execution; do not claim that a manifest metadata check proves rediscovery.
+Keep ground-truth test data outside all connected agent sources.
+
+The first authorized discovery execution subsequently completed as
+`run-317bb6de4608e935`: 24 MCP findings, 7/7 outdated precision/recall, 19/24
+classification accuracy, and five UNKNOWN-to-UNRELATED errors. Only an empty
+catalog search was used, with no similarity call. Its original database records,
+seven pending proposals and private execution/evaluation artifacts are preserved.
+See [the local refinement review](DISCOVERY_REFINEMENT.md). The revised local
+instructions in this working tree have NOT been installed remotely. No service
+restart or additional paid execution is authorized by this documentation update.
 
 ## Production and evaluation blockers
 

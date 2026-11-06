@@ -38,7 +38,7 @@ export const STATUS: Record<MapStatus, StatusMeta> = {
     key: "unknown",
     label: "Unknown",
     short: "Unknown",
-    description: "The agent could not classify it reliably (missing data or tool failure).",
+    description: "Return-policy applicability needs clarification, or required retrieval failed.",
   },
   unanalyzed: {
     key: "unanalyzed",

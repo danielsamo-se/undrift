@@ -143,6 +143,7 @@ def agent_runs(store: Store, runs_dir: Path = RUNS_DIR,
             'expires_at': run.expires_at.isoformat(), 'duration_s': meta.get('duration_s'),
             'agent_id': run.agent_id, 'thread_id': run.thread_id, 'message_id': run.message_id,
             'cost': meta.get('cost'), 'retrieval': meta.get('retrieval') or workflow.retrieval_status(store, run),
+            'document_outcomes': meta.get('document_outcomes', {}),
             'mcp_calls': [_call(e) for e in related if e.type == 'mcp.tool_call'],
             'classifications': {f.document_id: f.category for f in findings},
             'proposals': [p.id for p in store.proposals() if p.run_id == run.id],
@@ -184,8 +185,7 @@ def impact_snapshot(store: Store, policy_id: str, runs_dir: Path = RUNS_DIR) -> 
             f = max(matches, key=lambda f: (
                 f.policy_version == policy.version and (f.document_version == doc.version
                     or (f.category == 'UNKNOWN' and states[f.run_id].document_versions.get(doc.id) == doc.version)),
-                states[f.run_id].status == 'completed' and f.retrieved_during_run
-                    and f.category != 'UNKNOWN',
+                workflow.verified_finding(states[f.run_id], f),
                 f.category != 'UNKNOWN', f.created_at))
             run = states[f.run_id]
             evidence, reason = f.evidence, f.reason
@@ -198,8 +198,8 @@ def impact_snapshot(store: Store, policy_id: str, runs_dir: Path = RUNS_DIR) -> 
             c = candidates.get(doc.id)
             scan = 'actionable' if c and c.actionable else 'protected' if c else 'not_stale'
             finding = {
-                'verified_conclusion': run.status == 'completed' and f.retrieved_during_run
-                    and f.category != 'UNKNOWN',
+                'verified_conclusion': workflow.verified_finding(run, f),
+                'action': (run.metadata.get('document_outcomes', {}).get(doc.id) or {}).get('action'),
                 'id': f.id, 'category': f.category, 'classified_at': f.created_at.isoformat(),
                 'run_id': f.run_id, 'run_status': run.status, 'thread_id': run.thread_id,
                 'agent_id': run.agent_id, 'document_version': f.document_version,
@@ -217,8 +217,7 @@ def impact_snapshot(store: Store, policy_id: str, runs_dir: Path = RUNS_DIR) -> 
             **doc.model_dump(mode="json"),
             "finding": finding,
             "provisional_findings": [f.model_dump(mode='json') | {'run_status': states[f.run_id].status}
-                for f in reversed(matches) if states[f.run_id].status != 'completed'
-                or not f.retrieved_during_run or f.category == 'UNKNOWN'],
+                for f in reversed(matches) if not workflow.verified_finding(states[f.run_id], f)],
             "prefilter": {"state": "actionable" if c and c.actionable else
                           "protected" if c else "not_stale",
                           "stale_sentences": c.stale_sentences if c else [],

@@ -40,6 +40,10 @@ PROTECTED_RULES = (
         r"\border\s*#\s*\d+|\b(placed|made|purchased|bought)\s+before\b|\bpromised\b", re.I)),
 )
 CATEGORIES = {"OUTDATED", "VALID_DISTINCT", "EXISTING_COMMITMENT", "UNRELATED", "UNKNOWN"}
+# Classification is allowed here; automated correction is not, even after approval.
+# Include both unified and archived channel IDs. Never trust an agent-supplied category
+# or actor string to decide whether customer records or legal text may be rewritten.
+MANUAL_ONLY_CHANNELS = frozenset({'legal', 'crm', 'legal-terms', 'support-crm'})
 
 
 class WorkflowError(Exception):
@@ -65,6 +69,26 @@ class Conflict(WorkflowError):
 
 class GuardrailViolation(WorkflowError):
     status, code = 422, "guardrail_violation"
+
+
+def require_automatic_correction_allowed(doc) -> None:
+    if doc.channel in MANUAL_ONLY_CHANNELS:
+        raise GuardrailViolation('Legal and CRM documents require a separate manual editing workflow',
+                                 violations=[{'rule': 'manual_only_channel', 'channel': doc.channel}])
+
+
+def verified_finding(run: AgentRun, finding: Finding) -> bool:
+    """Only a successful trusted reconciliation can certify an individual conclusion.
+
+    Old completed runs retain their original interpretation. New discovery runs may
+    finish incomplete while certifying independent documents in the same transaction.
+    An ordinary incomplete/failed/running run never receives this exemption.
+    """
+    if not finding.retrieved_during_run or finding.category == 'UNKNOWN':
+        return False
+    return run.status == 'completed' or (
+        run.status == 'incomplete' and run.metadata.get('finalization') == 'per_document_v1'
+        and finding.document_id in run.metadata.get('verified_document_ids', []))
 
 
 @dataclass(frozen=True)
@@ -365,6 +389,8 @@ def submit_proposal(store: Store, *, document_id: str, base_version: int, policy
                 doc.content, proposed_content, current_days=policy.voluntary_return_days,
                 stale=stale, evidence=evidence if isinstance(evidence, str) else None,
                 effective_from=policy.effective_from)
+            if doc.channel in MANUAL_ONLY_CHANNELS:
+                violations.append({'rule': 'manual_only_channel', 'channel': doc.channel})
             if violations:
                 raise GuardrailViolation("proposal violates content guardrails",
                                          violations=violations, review_flags=flags)
@@ -410,6 +436,8 @@ def _review(store: Store, proposal_id: str, token: str | None, action: str,
             if proposal.status not in allowed_from:
                 raise Conflict(f"cannot {action} a proposal in status {proposal.status}")
             doc = store.document(proposal.document_id, conn=conn)
+            if new_status != 'rejected' and doc is not None:
+                require_automatic_correction_allowed(doc)
             if new_status != "rejected" and (
                     doc is None or doc.version != proposal.base_version
                     or _sha(doc.content) != _sha(proposal.original_content)):
@@ -691,6 +719,7 @@ def _validate_finding(store: Store, conn: sqlite3.Connection, run: AgentRun, *,
     if not evidence or evidence not in doc.content:
         raise WorkflowError("evidence must be an exact quote from the retrieved document")
     if proposed_content is not None:
+        require_automatic_correction_allowed(doc)
         policy, stale = _policy_context(store, run.policy_id, conn)
         violations, flags = check_guardrails(doc.content, proposed_content,
             current_days=policy.voluntary_return_days, stale=stale, evidence=evidence,
@@ -763,8 +792,9 @@ def ingest_agent_reply(store: Store, reply: str, *, actor: str,
     """Trusted runner finalization: validate the whole batch before any proposals.
 
     Live findings survive rejected final output. Final JSON can fill missing findings,
-    but must pass exactly the same scope, version, quote and retrieval checks. Findings,
-    proposals and the completed run commit together, or proposals all roll back.
+    but must pass exactly the same scope, version, quote and retrieval checks. Discovery
+    isolates honest UNKNOWNs after successful whole-batch reconciliation; malformed or
+    contradictory replies still roll back every new proposal and certification.
     """
     summary: dict[str, Any] = {'classifications': {}, 'proposals': [], 'errors': []}
     if not run_id:
@@ -837,7 +867,48 @@ def ingest_agent_reply(store: Store, reply: str, *, actor: str,
                         proposed_content=entry.get('proposed_content') if run.metadata.get('discovery') else None)
             retrieval = retrieval_status(store, run, conn)
             complete = retrieval['complete'] and all(f.category != 'UNKNOWN' for f in recorded.values())
-            if complete:
+            final_metadata = {**(metadata or {}), 'retrieval': retrieval}
+            if run.metadata.get('discovery'):
+                from discovery import validate_search_strategy
+                strategy = validate_search_strategy(store, run, conn)
+                outcomes, verified_ids = {}, []
+                for did, entry in entries.items():
+                    document_id = did
+                    finding = recorded[did]
+                    verified = finding.retrieved_during_run and finding.category != 'UNKNOWN'
+                    if verified:
+                        verified_ids.append(did)
+                    doc = store.document(did, conn=conn)
+                    if not verified:
+                        action = 'needs_clarification'
+                    elif finding.category != 'OUTDATED':
+                        action = 'no_change'
+                    elif doc.channel in MANUAL_ONLY_CHANNELS:
+                        action = 'manual_only'
+                    elif not entry.get('proposed_content'):
+                        action = 'needs_correction'
+                    else:
+                        action = 'proposed'
+                    outcomes[did] = {'action': action}
+                    if action != 'proposed':
+                        continue
+                    p = submit_proposal(store, document_id=did, base_version=entry['document_version'],
+                        policy_id=run.policy_id, policy_version=run.policy_version,
+                        proposed_content=entry['proposed_content'], reason=entry['reason'], actor=actor,
+                        evidence=entry['evidence'], provenance=provenance,
+                        run_id=run_id, finding_id=finding.id, _conn=conn)
+                    summary['proposals'].append(p.id)
+                    outcomes[did]['proposal_id'] = p.id
+                pending = [did for did, outcome in outcomes.items()
+                           if outcome['action'] not in {'proposed', 'no_change'}]
+                complete = retrieval['complete'] and not pending
+                summary['document_outcomes'] = outcomes
+                final_metadata.update(finalization='per_document_v1', verified_document_ids=verified_ids,
+                                      document_outcomes=outcomes, search_strategy=strategy)
+                if pending:
+                    summary['errors'].append({'error': 'documents require clarification or manual correction',
+                                              'document_ids': pending})
+            elif complete:
                 for did, entry in entries.items():
                     document_id = did
                     if entry['category'] != 'OUTDATED' or not entry.get('proposed_content'):
@@ -852,7 +923,7 @@ def ingest_agent_reply(store: Store, reply: str, *, actor: str,
                 summary['errors'].append({'error': 'analysis has UNKNOWN findings or incomplete retrieval'})
             summary['classifications'] = {d: f.category for d, f in recorded.items()}
             close_run(store, run_id, status='completed' if complete else 'incomplete', actor=actor,
-                      provenance=provenance, metadata={**(metadata or {}), 'retrieval': retrieval},
+                      provenance=provenance, metadata=final_metadata,
                       error=None if complete else summary['errors'][0]['error'], _conn=conn)
     except WorkflowError as exc:
         diagnostic = config.safe_metadata({'error': str(exc), 'code': exc.code,
