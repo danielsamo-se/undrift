@@ -42,6 +42,9 @@ class Proposal(BaseModel):
     created_at: datetime
     created_by: str
     provenance: dict[str, Any]
+    run_id: str | None = None
+    finding_id: str | None = None
+    evidence: str = ""
     reviewed_by: str | None = None
     reviewed_at: datetime | None = None
     review_note: str | None = None
@@ -59,3 +62,39 @@ class Event(BaseModel):
     subject_id: str | None
     metadata: dict[str, Any]
     error: str | None
+
+
+Category = Literal["OUTDATED", "VALID_DISTINCT", "EXISTING_COMMITMENT", "UNRELATED", "UNKNOWN"]
+
+
+class AgentRun(BaseModel):
+    id: str
+    policy_id: str
+    policy_version: int
+    document_ids: list[str]
+    status: Literal["open", "completed", "incomplete", "failed", "expired", "interrupted"]
+    created_at: datetime
+    expires_at: datetime
+    closed_at: datetime | None = None
+    agent_id: str | None = None
+    thread_id: str | None = None
+    message_id: str | None = None
+    document_versions: dict[str, int] = Field(default_factory=dict)
+    lease_until: datetime
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
+
+
+class Finding(BaseModel):
+    id: str
+    run_id: str
+    policy_id: str
+    policy_version: int
+    document_id: str
+    document_version: int | None
+    category: Category
+    evidence: str
+    reason: str
+    retrieved_during_run: bool
+    created_at: datetime
+    source: Literal["mcp", "final_json", "legacy"] = "mcp"

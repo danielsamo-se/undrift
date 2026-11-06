@@ -103,7 +103,7 @@ async def check_mcp(url: str, mode: str, r: Results) -> None:
                     schema_problems.append(f"{name}: required={s.get('required')}")
                 if prop.get("type") != "string" or prop.get("maxLength") != 64:
                     schema_problems.append(f"{name}.{param}: {prop}")
-                if set(s.get("properties", {})) != {param}:
+                if set(s.get("properties", {})) != {param, "run_id", "run_token"}:
                     schema_problems.append(f"{name}: extra params {list(s.get('properties', {}))}")
             hs = tools["health_check"].input_schema
             if hs.get("properties") or hs.get("required"):
@@ -268,6 +268,7 @@ async def run_local() -> Results:
     env = {**os.environ, "MCP_PATH_SECRET": secret, "MCP_PATH_SECRET_NEXT": next_secret,
            "MCP_PORT": str(port), "MCP_PUBLIC_HOST": SIM_PUBLIC_HOST, "PYTHONUNBUFFERED": "1",
            "UNDRIFT_DB": str(db), "UNDRIFT_MCP_WRITE_TOOLS": "0",
+           "UNDRIFT_MCP_FINDINGS": "0", "UNDRIFT_MCP_FINDINGS_PUBLIC": "0",
            "UNDRIFT_REVIEW_TOKEN": review_token}
     log_file = tempfile.NamedTemporaryFile("w+b", suffix=".log", delete=False)
     proc = subprocess.Popen([sys.executable, str(ROOT / "server.py")], cwd=ROOT, env=env,

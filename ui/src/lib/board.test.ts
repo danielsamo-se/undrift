@@ -106,6 +106,7 @@ describe("consistency and next action", () => {
     expect(nextAction(snap([outdated]), [pending])).toEqual({ kind: "review", proposalId: "prop-1", title: "Title d1" });
     expect(nextAction(snap([outdated]), [{ ...pending, status: "approved" }])).toMatchObject({ kind: "apply" });
     expect(nextAction(snap([outdated]), [])).toMatchObject({ kind: "analyse" });
+    expect(nextAction(snap([doc("unknown", "web", "UNKNOWN")]), [])).toMatchObject({ kind: "analyse" });
     expect(nextAction(snap([doc("d2", "web", "UNRELATED")]), [])).toEqual({ kind: "none" });
   });
 });
@@ -118,6 +119,19 @@ function ev(type: string, ts: string, metadata: Record<string, unknown> = {}, su
 
 describe("live activity", () => {
   const now = new Date("2026-11-05T16:00:10Z").getTime();
+  it("animates persisted findings and ignores rejected classifications", () => {
+    const good = ev("finding.recorded", "2026-11-05T16:00:08Z", { run_id: "r" }, "d1");
+    const rejected = { ...ev("agent.classification", "2026-11-05T16:00:09Z", {}, "d2"), status: "error" as const };
+    expect([...liveDocuments([good, rejected], 0, now)]).toEqual([["d1", "classified"]]);
+  });
+
+  it("keeps the board active when one of two runs finishes", () => {
+    expect(runInProgress([
+      ev("agent.run_started", "2026-11-05T16:00:00Z", { run_id: "a" }),
+      ev("agent.run_started", "2026-11-05T16:00:01Z", { run_id: "b" }),
+      ev("agent.run_finished", "2026-11-05T16:00:02Z", { run_id: "a" }),
+    ])).toBe(true);
+  });
   it("marks documents only for recent events that arrived after page load", () => {
     const old = ev("mcp.tool_call", "2026-11-05T16:00:05Z", { tool: "get_document", document_id: "d1" });
     const events = [
@@ -131,8 +145,18 @@ describe("live activity", () => {
   });
 
   it("detects a run in progress from the event log only", () => {
-    expect(runInProgress([ev("agent.run_started", "2026-11-05T16:00:00Z")])).toBe(true);
-    expect(runInProgress([ev("agent.run_started", "2026-11-05T16:00:00Z"), ev("agent.run_finished", "2026-11-05T16:00:09Z")])).toBe(false);
+    expect(runInProgress([ev("agent.run_started", "2026-11-05T16:00:00Z", { run_id: "run-1" })])).toBe(true);
+    expect(runInProgress([ev("agent.run_started", "2026-11-05T16:00:00Z", { run_id: "run-1" }), ev("agent.run_finished", "2026-11-05T16:00:09Z", { run_id: "run-1" })])).toBe(false);
     expect(runInProgress([])).toBe(false);
+  });
+});
+
+
+describe("provisional conclusions", () => {
+  it.each(["open", "failed", "incomplete", "interrupted"])("does not count a %s classification as consistent", (run_status) => {
+    const d = doc("d1", "web", "UNRELATED");
+    d.finding = { ...d.finding!, verified_conclusion: false, run_status };
+    expect(consistency(snap([d])).consistent).toBe(0);
+    expect(nextAction(snap([d]), [])).toMatchObject({ kind: "analyse" });
   });
 });

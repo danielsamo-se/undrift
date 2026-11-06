@@ -5,8 +5,11 @@
 
 Preconditions checked before a paid run: the free spike checks pass, the agent's remote
 instructions equal agents/patch.md, and the local policy has a newer version than its seed.
-The agent's reply is parsed locally; corrections become pending_review proposals through
-workflow.submit_proposal (same validation as every other path). Nothing is approved or applied.
+A run is opened locally first (workflow.open_run): it gets a run ID and a short-lived run token
+that the agent passes to the record_finding MCP tool, one finding per document. The final JSON
+reply is still parsed as a compatibility fallback and cross-checked against recorded findings;
+corrections become pending_review proposals through workflow.submit_proposal. Nothing is
+approved or applied. The run token is redacted from everything this script prints or saves.
 """
 
 from __future__ import annotations
@@ -31,6 +34,8 @@ from cominty_sdk import (
     MemoryCapability,
     SkillsCapability,
     WebCapability,
+    VideoGenerationCapability,
+    MusicGenerationCapability,
     events,
 )
 
@@ -42,33 +47,24 @@ from store import Store
 
 ROOT = Path(__file__).resolve().parent
 INSTRUCTIONS = ROOT / "agents" / "patch.md"
-DEFAULT_MAX_STEPS = 6
+DEFAULT_MAX_STEPS = 8
 
 
-def build_prompt(policy_id: str, document_ids: list[str]) -> str:
+def build_prompt(policy_id: str, document_ids: list[str], run_id: str, run_token: str) -> str:
     return (
+        f"Analysis run.\nRun ID: {run_id}\nRun token: {run_token}\n\n"
         f"Use the Undrift MCP integration (through its integration subagent if the tools are not "
         f"directly available) to retrieve policy '{policy_id}' with get_policy and each of these "
         f"documents with get_document: {', '.join(document_ids)}. Have every tool result returned "
         "complete and unmodified, including the policy version and effective date and each "
-        "document's version and full content. Classify every document against the current "
-        "policy, quote the evidence, and draft a full corrected text for every OUTDATED document. "
-        "Your corrections are proposals for human review: do not claim anything was changed. End "
+        "document's version and full content. Pass run_id and run_token to EVERY get_policy "
+        "and get_document call, including calls through the integration subagent. "
+        "Unscoped reads do not verify retrieval. Classify every document against the current "
+        "policy and record one finding per document with record_finding, passing the run ID and "
+        "run token above exactly. Draft a full corrected text for every OUTDATED document. Your "
+        "findings and corrections are for human review: do not claim anything was changed. End "
         "with the JSON block described in your instructions."
     )
-
-
-def retrieval_check(calls: list[Any], policy_id: str, document_ids: list[str]) -> dict[str, Any]:
-    """What the MCP server actually served during the run, whoever (agent or subagent) asked."""
-    served = [e.metadata for e in calls if e.status == "ok"]
-    policy = sorted({m.get("version") for m in served
-                     if m.get("tool") == "get_policy" and m.get("policy_id") == policy_id})
-    docs = {d: sorted({m.get("version") for m in served
-                       if m.get("tool") == "get_document" and m.get("document_id") == d})
-            for d in document_ids}
-    missing = ([f"policy:{policy_id}"] if not policy else []) + [d for d, v in docs.items() if not v]
-    return {"policy_versions": policy, "document_versions": docs, "missing": missing,
-            "complete": not missing}
 
 
 async def instructions_match(client: AsyncCominty, agent_id: str) -> bool:
@@ -92,83 +88,158 @@ def local_checks(store: Store) -> bool:
     return True
 
 
+async def mcp_ready(store: Store) -> bool:
+    """Verify the actual endpoint, scoped schemas, and shared database before spending."""
+    from mcp import Client
+    port = int(os.environ.get('MCP_PORT', config.DEFAULT_PORT))
+    try:
+        host = config.public_host()
+        origin = f'https://{host}' if host else f'http://127.0.0.1:{port}'
+        async with Client(origin + config.mcp_path(config.path_secret()), read_timeout_seconds=15) as client:
+            health = await client.call_tool('health_check', {})
+            available = {t.name: t for t in (await client.list_tools()).tools}
+            scoped = all(name in available and {'run_id', 'run_token'} <= set(
+                available[name].input_schema.get('properties', {})) for name in ('get_policy', 'get_document'))
+            shared = not health.is_error and (health.structured_content or {}).get('database_id') == store.identity()
+            ready = shared and scoped and 'record_finding' in available
+            out(f"MCP endpoint record_finding {'available' if 'record_finding' in available else 'unavailable'}; "
+                f"scoped_reads={scoped}; shared_database={shared}")
+            return ready
+    except Exception as exc:
+        out(f'MCP endpoint unavailable ({type(exc).__name__})')
+        return False
+
+
 async def paid_run(client: AsyncCominty, store: Store, agent_id: str, connection: str,
                    max_steps: int) -> int:
-    prompt = build_prompt(fixtures.POLICY_ID, store.document_ids())
-    actor = f"agent:cominty:{agent_id}"
-    started_at = datetime.now(UTC)
-    first_seq = store.record_event("agent.run_started", actor=actor, metadata={
-        "agent_id": agent_id, "max_steps": max_steps, "prompt_sha256": config.fingerprint(prompt)})
-    record: dict[str, Any] = {"started_at": started_at.isoformat(), "prompt": prompt, "events": []}
+    actor = f'agent:cominty:{agent_id}'
+    document_ids = store.document_ids()
+    agent_run, run_token = workflow.open_run(store, fixtures.POLICY_ID, document_ids,
+        actor=actor, agent_id=agent_id, ttl=workflow.RUN_TTL, metadata={'max_steps': max_steps})
+
+    async def heartbeat() -> None:
+        while True:
+            await asyncio.sleep(20)
+            await asyncio.to_thread(workflow.heartbeat_run, store, agent_run.id)
+
+    task = asyncio.create_task(heartbeat())
+    work = asyncio.create_task(_paid_run(client, store, agent_id, connection, max_steps,
+                                        agent_run.id, run_token, document_ids, actor))
+    try:
+        # A failed lease renewal cancels the local run instead of silently losing ownership.
+        done, _ = await asyncio.wait({task, work}, timeout=workflow.RUN_TTL.total_seconds(),
+                                     return_when=asyncio.FIRST_COMPLETED)
+        if not done:
+            raise TimeoutError('analysis lifetime exceeded')
+        if work in done:
+            return await work
+        if task in done and store.run(agent_run.id).status == 'completed':
+            return await work
+        if task in done:
+            await task
+            raise RuntimeError('runner heartbeat stopped')
+        return await work
+    except BaseException as exc:
+        store.reap_runs()
+        current = store.run(agent_run.id)
+        if current and current.status == 'open':
+            workflow.close_run(store, agent_run.id,
+                status='interrupted' if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt))
+                    else 'expired' if isinstance(exc, TimeoutError) else 'failed',
+                actor=actor, error=f'run aborted: {type(exc).__name__}')
+        raise
+    finally:
+        for pending in (task, work):
+            if not pending.done():
+                pending.cancel()
+        await asyncio.gather(task, work, return_exceptions=True)
+
+
+async def _paid_run(client: AsyncCominty, store: Store, agent_id: str, connection: str,
+                    max_steps: int, run_id: str, run_token: str, document_ids: list[str],
+                    actor: str) -> int:
+    def scrub(text: str) -> str:
+        return config.redact(text, run_token)
+
+    prompt = build_prompt(fixtures.POLICY_ID, document_ids, run_id, run_token)
+    record: dict[str, Any] = {'run_id': run_id, 'started_at': datetime.now(UTC).isoformat(),
+                              'prompt': scrub(prompt), 'events': []}
+    out(f'run          {run_id} opened (token issued, not shown)')
     t0 = time.monotonic()
-    run = await client.chat.start(
-        agent_id=agent_id, message=prompt, name="undrift-impact", max_steps=max_steps,
-        thread_capabilities=AgentCapabilities(
-            mcp=McpCapability(activation="always", connections=[connection]),
-            web=WebCapability(activation="never"),
-            indexed_documents=IndexedDocumentsCapability(activation="never"),
-            skills=SkillsCapability(activation="never"),
-            image_generation=ImageGenerationCapability(activation="never"),
-            memory=MemoryCapability(activation="never"),
-        ),
-    )
-    provenance = {"source": "cominty", "agent_id": agent_id, "thread_id": str(run.thread.id),
-                  "message_id": str(run.message_id)}
-    out(f"thread={run.thread.id} message={run.message_id}")
-    cost: dict[str, Any] | None = None
-    async with run:
-        async for event in run:
-            record["events"].append(json.loads(config.redact(event.model_dump_json())))
-            dt = time.monotonic() - t0
-            if isinstance(event, events.ToolCall):
-                out(f"{dt:6.1f}s TOOL {event.status:<7} {event.data.name}")
-            elif isinstance(event, events.LlmStep):
-                out(f"{dt:6.1f}s LLM  {event.status:<7} model={event.data.model!r}")
-            elif isinstance(event, events.Result):
-                cost = json.loads(event.data.cost.model_dump_json())
-                out(f"{dt:6.1f}s RESULT cost total={event.data.cost.total}")
-    message = await run.result()
-    reply = message.content or ""
-
-    window = store.events(after=first_seq, limit=1000, type_prefix="mcp.tool_call")
-    tool_calls = [f"{e.metadata.get('tool')}:{e.metadata.get('document_id') or e.metadata.get('policy_id') or ''}"
-                  for e in window]
-    retrieval = retrieval_check(window, fixtures.POLICY_ID, store.document_ids())
-    store.record_event("agent.run_finished", actor=actor,
-                       status="ok" if message.status.value == "success" else "error",
-                       metadata={**provenance, "status": message.status.value, "cost": cost,
-                                 "duration_s": round(time.monotonic() - t0, 1),
-                                 "mcp_tool_calls_during_run": tool_calls,
-                                 "retrieval": retrieval,
-                                 "reply_length": len(reply)},
-                       error=message.error_code)
-    summary = workflow.ingest_agent_reply(store, reply, actor=actor, provenance=provenance)
-
-    out("-" * 30 + " agent reply " + "-" * 30)
-    out(reply)
-    out("-" * 73)
-    out(f"MCP tool calls recorded server-side during the run: {tool_calls or 'none'}")
-    out(f"retrieval check: complete={retrieval['complete']} policy v{retrieval['policy_versions']} "
-        f"documents {retrieval['document_versions']} missing={retrieval['missing']}")
-    out(f"classifications: {summary['classifications']}")
-    out(f"proposals (pending_review): {summary['proposals'] or 'none'}")
-    for err in summary["errors"]:
-        out(f"error: {err}")
-    graded = {k: summary["classifications"].get(k) == v
-              for k, v in fixtures.EXPECTED_CLASSIFICATION.items()}
-    out(f"grading vs fixtures: {graded}")
-
-    record.update(provenance=provenance, cost=cost, status=message.status.value,
-                  reply=config.redact(reply), summary=summary, mcp_tool_calls=tool_calls,
-                  retrieval=retrieval,
-                  grading=graded, finished_at=datetime.now(UTC).isoformat())
-    path = ROOT / "runs" / f"impact_{datetime.now(UTC):%Y%m%dT%H%M%SZ}.json"
+    path = ROOT / 'runs' / f'impact_{run_id}.json'
     path.parent.mkdir(exist_ok=True)
-    path.write_text(config.redact(json.dumps(record, indent=2, default=str)), encoding="utf-8")
-    out(f"Evidence saved to {path.relative_to(ROOT)}")
-    ok = (message.status.value == "success" and retrieval["complete"] and summary["proposals"]
-          and all(graded.values()))
-    return 0 if ok else 1
+
+    def save() -> None:
+        temporary = path.with_suffix('.tmp')
+        temporary.write_text(scrub(json.dumps(record, indent=2, default=str)), encoding='utf-8')
+        temporary.replace(path)
+
+    run = None
+    terminal_received = False
+    save()
+    try:
+        run = await client.chat.start(
+            agent_id=agent_id, message=prompt, name='undrift-impact', max_steps=max_steps,
+            thread_capabilities=AgentCapabilities(
+                mcp=McpCapability(activation='always', connections=[connection]),
+                web=WebCapability(activation='never'),
+                indexed_documents=IndexedDocumentsCapability(activation='never'),
+                skills=SkillsCapability(activation='never'),
+                image_generation=ImageGenerationCapability(activation='never'),
+                video_generation=VideoGenerationCapability(activation='never'),
+                music_generation=MusicGenerationCapability(activation='never'),
+                memory=MemoryCapability(activation='never')))
+        provenance = {'source': 'cominty', 'agent_id': agent_id, 'run_id': run_id,
+                      'thread_id': str(run.thread.id), 'message_id': str(run.message_id)}
+        record['provenance'] = provenance
+        save()
+        workflow.heartbeat_run(store, run_id, provenance=provenance)
+        cost = None
+        async with run:
+            async for event in run:
+                record['events'].append(json.loads(scrub(event.model_dump_json())))
+                save()
+                if isinstance(event, events.Result):
+                    cost = json.loads(event.data.cost.model_dump_json())
+        message = await run.result()
+        terminal_received = True
+        reply = message.content or ''
+        retrieval = workflow.retrieval_status(store, store.run(run_id))
+        metadata = {'execution_status': message.status.value, 'cost': cost,
+                    'duration_s': round(time.monotonic() - t0, 1), 'retrieval': retrieval}
+        record.update(provenance=provenance, reply=scrub(reply), cost=cost,
+                      execution_status=message.status.value, retrieval=retrieval)
+        # Capture paid evidence before creating proposals. Product state does not depend on this file.
+        save()
+        summary = workflow.ingest_agent_reply(store, reply, actor=actor, provenance=provenance,
+            run_id=run_id, execution_status=message.status.value, metadata=metadata)
+        state = store.run(run_id)
+        record.update(summary=summary, status=state.status,
+                      findings=[f.model_dump(mode='json') for f in store.findings(run_id=run_id)],
+                      finished_at=datetime.now(UTC).isoformat())
+        try:
+            save()
+        except OSError:
+            out('Evidence summary could not be updated; canonical results are persisted in SQLite.')
+        out(scrub(reply))
+        out(f'run {run_id}: {state.status}; findings={summary["classifications"]}; '
+            f'proposals={summary["proposals"]}; errors={summary["errors"]}')
+        out(f'Evidence saved to {path.relative_to(ROOT)}')
+        return 0 if state.status == 'completed' and not summary['errors'] else 1
+    except BaseException as exc:
+        record.update(error=type(exc).__name__, finished_at=datetime.now(UTC).isoformat())
+        if run is not None and not terminal_received:
+            record['cancellation'] = 'attempted'
+            try:
+                await asyncio.wait_for(client.chat.cancel(run.message_id), timeout=10)
+                record['cancellation'] = 'requested'
+            except Exception as cancel_error:
+                record['cancellation'] = type(cancel_error).__name__
+        try:
+            save()
+        except OSError:
+            out('Partial evidence could not be saved; inspect the remote run before retrying.')
+        raise
 
 
 async def main() -> int:
@@ -187,6 +258,7 @@ async def main() -> int:
             ready, _ = await free_checks(client, env["COMINTY_AGENT_ID"], connection)
             ready = await instructions_match(client, env["COMINTY_AGENT_ID"]) and ready
             ready = local_checks(store) and ready
+            ready = await mcp_ready(store) and ready
             if not args.run:
                 out("\nFree checks done. No agent run was started (no credit spent).")
                 return 0 if ready else 1

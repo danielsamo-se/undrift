@@ -66,6 +66,7 @@ export function consistency(snap: ImpactSnapshot): Consistency {
     counts.set(s, (counts.get(s) ?? 0) + 1);
     if (s === "unanalyzed") unanalyzed++;
     else if (isStale(d)) stale++;
+    else if (d.finding?.verified_conclusion === false) unknown++;
     else if (s === "outdated") drifted++;
     else if (s === "unknown") unknown++;
   }
@@ -103,6 +104,7 @@ export function nextAction(snap: ImpactSnapshot, proposals: Proposal[]): NextAct
     (d) => statusOf(d) === "outdated" && !isStale(d) && !d.proposals.some((p) => p.status === "pending_review" || p.status === "approved"),
   );
   if (uncovered.length) return { kind: "analyse", reason: `${uncovered.length} outdated without a correction` };
+  if (c.unknown) return { kind: "analyse", reason: `${c.unknown} could not be classified reliably` };
   if (c.stale || c.unanalyzed) return { kind: "analyse", reason: `${c.stale + c.unanalyzed} not analysed at the current versions` };
   return { kind: "none" };
 }
@@ -125,7 +127,7 @@ export function liveDocuments(events: ActivityEvent[], freshSince: number, now: 
     if (e.type === "mcp.tool_call" && e.metadata.tool === "get_document" && e.status === "ok") {
       doc = String(e.metadata.document_id ?? "");
       kind = "reading";
-    } else if (e.type === "agent.classification") {
+    } else if ((e.type === "finding.recorded" || e.type === "agent.classification") && e.status === "ok") {
       doc = e.subject_id;
       kind = "classified";
     } else if (e.type === "proposal.created") {
@@ -139,12 +141,14 @@ export function liveDocuments(events: ActivityEvent[], freshSince: number, now: 
 
 /** True while an agent run has started and not yet finished, according to the event log. */
 export function runInProgress(events: ActivityEvent[]): boolean {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const t = events[i]!.type;
-    if (t === "agent.run_finished") return false;
-    if (t === "agent.run_started") return true;
+  const active = new Set<string>();
+  for (const e of events) {
+    const rid = typeof e.metadata.run_id === "string" ? e.metadata.run_id : null;
+    if (!rid) continue;
+    if (e.type === "agent.run_started") active.add(rid);
+    if (e.type === "agent.run_finished") active.delete(rid);
   }
-  return false;
+  return active.size > 0;
 }
 
 export function statusLabel(s: MapStatus): string {

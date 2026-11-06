@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-from conftest import GOOD_FAQ
+from conftest import GOOD_FAQ, analysis_run
 from starlette.testclient import TestClient
 from test_run_impact import fetch
 from test_workflow import edit_document_externally, reply_with
@@ -24,19 +24,18 @@ VERDICT = {
     "doc-002": {"category": "VALID_DISTINCT", "document_version": 1,
                 "evidence": "Customers have a statutory 14-day withdrawal right."},
     "doc-003": {"category": "EXISTING_COMMITMENT", "document_version": 1,
-                "evidence": "Quote the agent made up."},
+                "evidence": fixtures.DOCUMENTS["doc-003"].content},
 }
 
 
 def simulate_run(store: Store, runs_dir: Path, finish: bool = True) -> str:
     actor = "agent:cominty:agent-x"
-    store.record_event("agent.run_started", actor=actor, metadata={"agent_id": "agent-x"})
-    fetch([("get_policy", {"policy_id": fixtures.POLICY_ID})]
-          + [("get_document", {"document_id": d}) for d in ("doc-001", "doc-002", "doc-003")])
+    run, secret = analysis_run(store, ["doc-001", "doc-002", "doc-003"], retrieve=False)
+    fetch([("get_policy", {"policy_id": fixtures.POLICY_ID, "run_id": run.id, "run_token": secret})]
+          + [("get_document", {"document_id": d, "run_id": run.id, "run_token": secret})
+             for d in run.document_ids])
     if not finish:
-        return ""
-    store.record_event("agent.run_finished", actor=actor, metadata={
-        **PROV, "status": "success", "duration_s": 12.5, "cost": {"total": "0.05"}})
+        return run.id
     reply = "**doc-001**: outdated.\n" + reply_with(VERDICT)
     runs_dir.mkdir(exist_ok=True)
     (runs_dir / "impact_20261105T150000Z.json").write_text(json.dumps({
@@ -44,8 +43,9 @@ def simulate_run(store: Store, runs_dir: Path, finish: bool = True) -> str:
             {"name": "tool_call", "status": "success",
              "data": {"name": "subagent", "description": "Retrieve policy and documents"}},
             {"name": "llm", "status": "running", "data": {"model": "M", "description": "x"}}]}))
-    workflow.ingest_agent_reply(store, reply, actor=actor, provenance=PROV)
-    return "msg-1"
+    workflow.ingest_agent_reply(store, reply, actor=actor, provenance=PROV, run_id=run.id,
+        execution_status="success", metadata={"duration_s": 12.5, "cost": {"total": "0.05"}})
+    return run.id
 
 
 @pytest.fixture
@@ -53,11 +53,11 @@ def runs_dir(tmp_path: Path) -> Path:
     return tmp_path / "runs"
 
 
-def test_runs_are_reconstructed_from_events_and_run_records(changed: Store, runs_dir: Path) -> None:
-    simulate_run(changed, runs_dir)
+def test_runs_use_persisted_state_and_optional_run_records(changed: Store, runs_dir: Path) -> None:
+    rid = simulate_run(changed, runs_dir)
     [run] = readmodel.agent_runs(changed, runs_dir)
     assert (run["id"], run["status"], run["thread_id"], run["duration_s"]) == (
-        "msg-1", "success", "thread-1", 12.5)
+        rid, "completed", "thread-1", 12.5)
     assert [(c["tool"], c["version"]) for c in run["mcp_calls"]] == [
         ("get_policy", 2), ("get_document", 3), ("get_document", 1), ("get_document", 1)]
     assert run["classifications"] == {"doc-001": "OUTDATED", "doc-002": "VALID_DISTINCT",
@@ -71,12 +71,12 @@ def test_runs_are_reconstructed_from_events_and_run_records(changed: Store, runs
 def test_run_in_progress_is_reported_as_running(changed: Store, runs_dir: Path) -> None:
     simulate_run(changed, runs_dir, finish=False)
     [run] = readmodel.agent_runs(changed, runs_dir)
-    assert run["status"] == "running" and run["finished_at"] is None
+    assert run["status"] == "open" and run["finished_at"] is None
     assert len(run["mcp_calls"]) == 4 and run["verdict"] is None
 
 
 def test_impact_snapshot_joins_findings_evidence_and_proposals(changed: Store, runs_dir: Path) -> None:
-    simulate_run(changed, runs_dir)
+    rid = simulate_run(changed, runs_dir)
     snap = readmodel.impact_snapshot(changed, fixtures.POLICY_ID, runs_dir)
     assert snap["policy"]["version"] == 2 and len(snap["policy_versions"]) == 2
     docs = {d["id"]: d for d in snap["documents"]}
@@ -86,15 +86,15 @@ def test_impact_snapshot_joins_findings_evidence_and_proposals(changed: Store, r
     assert f1["evidence_verified"] is True and f1["reason"].startswith("60 days")
     assert (f1["prefilter"], f1["agrees_with_prefilter"]) == ("actionable", True)
     assert [p["status"] for p in docs["doc-001"]["proposals"]] == ["pending_review"]
-    assert docs["doc-003"]["finding"]["evidence_verified"] is False
+    assert docs["doc-003"]["finding"]["evidence_verified"] is True
     assert docs["doc-003"]["prefilter"]["protected"] == {"0": "existing_commitment"}
     assert docs["doc-004"]["finding"] is None
-    assert snap["latest_run"]["id"] == "msg-1" and "verdict" not in snap["latest_run"]
+    assert snap["latest_run"]["id"] == rid and "verdict" not in snap["latest_run"]
 
 
 def test_findings_become_stale_when_document_or_policy_moves(changed: Store, runs_dir: Path,
                                                              token: str) -> None:
-    simulate_run(changed, runs_dir)
+    rid = simulate_run(changed, runs_dir)
     edit_document_externally(changed, "doc-002", "Customers have a statutory 14-day withdrawal right!")
     docs = {d["id"]: d for d in readmodel.impact_snapshot(changed, fixtures.POLICY_ID, runs_dir)["documents"]}
     assert docs["doc-002"]["finding"]["current"] is False
@@ -107,14 +107,26 @@ def test_findings_become_stale_when_document_or_policy_moves(changed: Store, run
     assert docs["doc-001"]["finding"]["current"] is False
 
 
-def test_missing_run_record_degrades_without_inventing_evidence(changed: Store, runs_dir: Path) -> None:
-    simulate_run(changed, runs_dir)
+def test_missing_run_record_keeps_persisted_evidence(changed: Store, runs_dir: Path) -> None:
+    rid = simulate_run(changed, runs_dir)
     for f in runs_dir.iterdir():
         f.unlink()
     finding = {d["id"]: d for d in readmodel.impact_snapshot(
         changed, fixtures.POLICY_ID, runs_dir)["documents"]}["doc-001"]["finding"]
-    assert finding["category"] == "OUTDATED" and finding["evidence"] is None
-    assert finding["document_version"] == 3 and finding["evidence_verified"] is False
+    assert finding["category"] == "OUTDATED" and finding["evidence"] == fixtures.DOCUMENTS["doc-001"].content
+    assert finding["document_version"] == 3 and finding["evidence_verified"] is True
+
+
+def test_malformed_optional_trace_cannot_break_persisted_product_state(changed: Store, runs_dir: Path) -> None:
+    rid = simulate_run(changed, runs_dir)
+    path = next(runs_dir.glob('impact_*.json'))
+    path.write_text(json.dumps({'provenance': PROV, 'reply': None,
+        'events': [None, {'status': [], 'data': []}, {'status': 'success', 'data': 'bad'}]}))
+    readmodel._record_cache.clear()
+    snap = readmodel.impact_snapshot(changed, fixtures.POLICY_ID, runs_dir)
+    assert snap['latest_run']['id'] == rid and snap['latest_run']['status'] == 'completed'
+    assert snap['documents'][0]['finding']['evidence_verified']
+    assert readmodel.agent_runs(changed, runs_dir)[0]['trace'] == []
 
 
 def client_for(store: Store, runs_dir: Path, ui_dir: Path | None = None) -> TestClient:
@@ -123,14 +135,14 @@ def client_for(store: Store, runs_dir: Path, ui_dir: Path | None = None) -> Test
 
 
 def test_impact_runs_and_proposal_check_endpoints(changed: Store, runs_dir: Path) -> None:
-    simulate_run(changed, runs_dir)
+    rid = simulate_run(changed, runs_dir)
     c = client_for(changed, runs_dir)
     snap = c.get(f"/api/policies/{fixtures.POLICY_ID}/impact").json()
     assert len(snap["documents"]) == 4
     assert c.get("/api/policies/nope/impact").status_code == 404
     runs = c.get("/api/runs").json()["runs"]
-    assert [r["id"] for r in runs] == ["msg-1"] and "verdict" not in runs[0]
-    assert c.get("/api/runs/msg-1").json()["run"]["verdict"]["documents"]["doc-001"]
+    assert [r["id"] for r in runs] == [rid] and "verdict" not in runs[0]
+    assert c.get(f"/api/runs/{rid}").json()["run"]["verdict"]["documents"]["doc-001"]
     assert c.get("/api/runs/nope").status_code == 404
     pid = runs[0]["proposals"][0]
     detail = c.get(f"/api/proposals/{pid}").json()

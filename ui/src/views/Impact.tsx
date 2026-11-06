@@ -4,7 +4,7 @@ import type { ImpactSnapshot } from "../api/types";
 import { DocumentPanel } from "../components/DocumentPanel";
 import { ImpactBoard } from "../components/ImpactBoard";
 import { ErrorState, LoadingBlock, PolicyVersion, StatusDot } from "../components/ui";
-import { consistency, liveDocuments, runInProgress } from "../lib/board";
+import { consistency, liveDocuments } from "../lib/board";
 import { STATUS, STATUS_ORDER, type MapStatus } from "../lib/classification";
 import { useImpact } from "../lib/data";
 import { navigate, useNow } from "../lib/hooks";
@@ -69,7 +69,7 @@ function Impact({ snap, selectedId }: { snap: ImpactSnapshot; selectedId: string
           selectedId={selectedId}
           onSelect={select}
           live={liveDocs}
-          analysing={runInProgress(live.events)}
+          analysing={(snap.active_run_ids?.length ?? 0) > 0}
         />
         {selected && (
           <DocumentPanel

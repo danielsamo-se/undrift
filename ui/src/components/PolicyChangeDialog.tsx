@@ -8,6 +8,8 @@ export function PolicyChangeDialog({ policy, onClose, onChanged }: {
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const [basePolicy] = useState(policy);
+  const stale = policy.version !== basePolicy.version;
   const [days, setDays] = useState(String(policy.voluntary_return_days));
   const [effective, setEffective] = useState(policy.effective_from);
   const [description, setDescription] = useState(policy.description);
@@ -22,7 +24,7 @@ export function PolicyChangeDialog({ policy, onClose, onChanged }: {
     setBusy(true);
     setError(null);
     try {
-      await api.changePolicy(policy.id, { voluntary_return_days: parsedDays, effective_from: effective, description });
+      await api.changePolicy(policy.id, { expected_version: basePolicy.version, voluntary_return_days: parsedDays, effective_from: effective, description });
       onChanged();
       onClose();
     } catch (err) {
@@ -41,7 +43,7 @@ export function PolicyChangeDialog({ policy, onClose, onChanged }: {
           <button className="btn" onClick={onClose} disabled={busy}>
             Cancel
           </button>
-          <button className="btn btn-primary" disabled={!valid || unchanged || busy} onClick={() => void submit()}>
+          <button className="btn btn-primary" disabled={!valid || unchanged || busy || stale} onClick={() => void submit()}>
             {busy && <Spinner />} Create <PolicyVersion version={policy.version + 1} />
           </button>
         </>
@@ -65,6 +67,7 @@ export function PolicyChangeDialog({ policy, onClose, onChanged }: {
         <span>Authoritative policy text</span>
         <textarea rows={5} maxLength={4000} value={description} onChange={(e) => setDescription(e.target.value)} />
       </label>
+      {stale && <p className="field-error">Policy changed while editing. Close and reopen this editor to review the latest version.</p>}
       {error && <p className="field-error">{error}</p>}
     </Modal>
   );

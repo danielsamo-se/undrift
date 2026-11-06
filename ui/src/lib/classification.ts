@@ -60,6 +60,7 @@ const BY_CATEGORY: Record<Category, MapStatus> = {
 
 export function statusOf(doc: Pick<ImpactDocument, "finding">): MapStatus {
   const category = doc.finding?.category;
+  if (doc.finding?.verified_conclusion === false && category !== "OUTDATED") return "unknown";
   return category && category in BY_CATEGORY ? BY_CATEGORY[category] : category ? "unknown" : "unanalyzed";
 }
 

@@ -17,14 +17,15 @@ import hmac
 import json
 import os
 import re
+import secrets
 import sqlite3
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import config
-from models import Policy, Proposal
+from models import AgentRun, Finding, Policy, Proposal
 from store import Store, now
 
 MAX_CONTENT = 20_000
@@ -100,6 +101,17 @@ def analyze(content: str, stale: re.Pattern[str] | None) -> list[Sentence]:
             for i, s in enumerate(split_sentences(content))]
 
 
+def _return_related(sentence: str) -> bool:
+    # Only simple eligibility statements are safe to replace wholesale. Any condition,
+    # second clause or processing deadline requires a more precise human edit.
+    period = r'(?:\d{1,3}\s*-?\s*days?|two months)'
+    return bool(re.fullmatch(
+        rf'(?:All customers can return items within {period}|'
+        rf'(?:Customers|You) can (?:return items|send items back) within {period}|'
+        rf'Items can be returned within {period}|Returns are accepted within {period})[.!]',
+        sentence, re.I))
+
+
 def days_pattern(values: set[int]) -> re.Pattern[str] | None:
     if not values:
         return None
@@ -141,7 +153,8 @@ def detect_candidates(store: Store, policy_id: str,
 
 def check_guardrails(original: str, proposed: str, *, current_days: int,
                      stale: re.Pattern[str] | None,
-                     evidence: str | None = None) -> tuple[list[dict], list[dict]]:
+                     evidence: str | None = None,
+                     effective_from: date | None = None) -> tuple[list[dict], list[dict]]:
     """Validate a correction; return (violations, review_flags).
 
     Rewritable: unprotected sentences the prefilter marks stale, plus unprotected sentences
@@ -166,9 +179,11 @@ def check_guardrails(original: str, proposed: str, *, current_days: int,
             continue
         if s.protected:
             violations.append({"rule": s.protected, "sentence": s.index})
-        elif s.stale:
+        elif s.stale and _return_related(s.text):
             replaced = True
-        elif len(cited) >= 8 and (s.text in cited or cited in s.text):
+        elif (len(cited) >= 8 and evidence is not None and evidence in original
+              and (s.text in cited or cited in s.text)
+              and _return_related(s.text)):
             replaced = True
             flags.append({"flag": "rewrites_sentence_missed_by_prefilter", "sentence": s.index})
         else:
@@ -193,7 +208,53 @@ def check_guardrails(original: str, proposed: str, *, current_days: int,
             states_current = True
     if not states_current:
         violations.append({"rule": "correction_missing", "expected_days": current_days})
+    # New claims must fit a small, explicit policy-only grammar. This intentionally
+    # fails closed for wording we cannot validate locally; humans can revise/retry.
+    dates = _date_strings(effective_from) if effective_from else []
+    date_pattern = '(?:' + '|'.join(re.escape(d) for d in dates) + ')' if dates else r'.+?'
+    d = str(current_days)
+    correction = re.compile(
+        rf"(?:Items purchased on or after {date_pattern} can be returned within {d} days|"
+        rf"Customers can return items within {d} days for purchases made on or after {date_pattern}|"
+        rf"Items bought from {date_pattern} can be returned within {d} days|"
+        rf"For purchases made on or after {date_pattern}, items can be returned within {d} days|"
+        rf"Shiftly offers a voluntary return period of {d} days for purchases made on or after {date_pattern}"
+        rf"{'' if effective_from else '|Items can be returned within ' + d + ' days'})[.!]", re.I)
+    old_days = '|'.join(sorted({d for d in DAYS_RE.findall(original)
+                               if stale and stale.search(f'{d} days')})) or r'(?!)'
+    transition = re.compile(
+        rf"Purchases made before {date_pattern} keep (?:the return period promised at the time of purchase|"
+        rf"the voluntary return period promised at the time of purchase|"
+        rf"the (?:{old_days})-day return period promised at the time of purchase)[.!]", re.I)
+    statutory = {"Your statutory 14-day right of withdrawal is not affected.",
+                 "The statutory 14-day EU right of withdrawal is unchanged."}
+    for s in new:
+        if s.text in original_texts:
+            continue
+        if not (correction.fullmatch(s.text) or transition.fullmatch(s.text) or s.text in statutory):
+            violations.append({"rule": "unsupported_added_claim", "proposed_sentence": s.index})
+    if effective_from and not any(correction.fullmatch(s.text) for s in new):
+        violations.append({"rule": "effective_date_missing_or_invalid",
+                           "effective_from": effective_from.isoformat()})
+    # Keep protected/unrelated sentences in order and with their original multiplicity.
+    position = 0
+    for s in old:
+        rewritable = not s.protected and _return_related(s.text) and (s.stale or (
+            len(cited) >= 8 and (s.text in cited or cited in s.text)
+            and evidence is not None and evidence in original
+            and _return_related(s.text)))
+        if not rewritable:
+            at = proposed.find(s.text, position)
+            if at < 0:
+                if not any(v.get('sentence') == s.index for v in violations):
+                    violations.append({'rule': 'unrelated_content', 'sentence': s.index})
+            else:
+                position = at + len(s.text)
     return violations, flags
+
+
+def _date_strings(value: date) -> list[str]:
+    return [value.isoformat(), f"{value:%B} {value.day}, {value.year}"]
 
 
 def unified_diff(document_id: str, version: int, original: str, proposed: str) -> str:
@@ -222,7 +283,7 @@ def authorize(store: Store, token: str | None, action: str, subject: tuple[str, 
 
 def change_policy(store: Store, policy_id: str, *, voluntary_return_days: int,
                   effective_from: date, description: str,
-                  token: str | None) -> tuple[Policy, list[Candidate]]:
+                  token: str | None, expected_version: int | None = None) -> tuple[Policy, list[Candidate]]:
     reviewer = authorize(store, token, "policy.change", ("policy", policy_id))
     if not 1 <= voluntary_return_days <= 365:
         raise WorkflowError("voluntary_return_days must be between 1 and 365")
@@ -232,6 +293,10 @@ def change_policy(store: Store, policy_id: str, *, voluntary_return_days: int,
         current = store.policy(policy_id, conn=conn)
         if current is None:
             raise NotFound(f"unknown policy {policy_id!r}")
+        if expected_version is not None and (
+                type(expected_version) is not int or expected_version != current.version):
+            raise Conflict("policy changed since the editor was opened",
+                           current_policy_version=current.version)
         if (current.voluntary_return_days, current.effective_from, current.description) == (
                 voluntary_return_days, effective_from, description):
             raise Conflict("the new version is identical to the current one")
@@ -260,7 +325,9 @@ def change_policy(store: Store, policy_id: str, *, voluntary_return_days: int,
 def submit_proposal(store: Store, *, document_id: str, base_version: int, policy_id: str,
                     policy_version: int, proposed_content: str, reason: str, actor: str,
                     provenance: dict[str, Any] | None = None,
-                    evidence: str | None = None) -> Proposal:
+                    evidence: str | None = None, run_id: str | None = None,
+                    finding_id: str | None = None,
+                    _conn: sqlite3.Connection | None = None) -> Proposal:
     """Create a pending_review proposal. Never changes the document itself.
 
     `evidence` is the agent's verbatim quote of the outdated text; it authorizes rewriting
@@ -276,7 +343,9 @@ def submit_proposal(store: Store, *, document_id: str, base_version: int, policy
             raise WorkflowError(f"proposed_content must be a string of at most {MAX_CONTENT} chars")
         if not isinstance(reason, str) or not reason.strip() or len(reason) > MAX_REASON:
             raise WorkflowError(f"reason must be 1-{MAX_REASON} characters")
-        with store.write() as conn:
+        if config.redact(proposed_content) != proposed_content or config.redact(reason) != reason:
+            raise WorkflowError("credentials are forbidden in proposal text")
+        with store.write(_conn) as conn:
             doc = store.document(document_id, conn=conn)
             if doc is None:
                 raise NotFound(f"unknown document {document_id!r}")
@@ -294,7 +363,8 @@ def submit_proposal(store: Store, *, document_id: str, base_version: int, policy
                                proposal_ids=open_)
             violations, flags = check_guardrails(
                 doc.content, proposed_content, current_days=policy.voluntary_return_days,
-                stale=stale, evidence=evidence if isinstance(evidence, str) else None)
+                stale=stale, evidence=evidence if isinstance(evidence, str) else None,
+                effective_from=policy.effective_from)
             if violations:
                 raise GuardrailViolation("proposal violates content guardrails",
                                          violations=violations, review_flags=flags)
@@ -303,14 +373,15 @@ def submit_proposal(store: Store, *, document_id: str, base_version: int, policy
             conn.execute(
                 "INSERT INTO proposals (id, document_id, base_version, policy_id, policy_version, "
                 "original_content, proposed_content, diff, reason, status, created_at, created_by, "
-                "provenance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', ?, ?, ?)",
+                "provenance, run_id, finding_id, evidence) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', ?, ?, ?, ?, ?, ?)",
                 (proposal_id, document_id, base_version, policy_id, policy_version, doc.content,
                  proposed_content, diff, reason.strip(), now(), config.safe_text(actor, 120),
-                 json.dumps(provenance, sort_keys=True)))
+                 json.dumps(provenance, sort_keys=True), run_id, finding_id, evidence or ''))
             lines = diff.splitlines()[2:]
             store.add_event(conn, "proposal.created", actor=actor,
                             subject=("proposal", proposal_id), metadata={
-                                **meta, "proposal_id": proposal_id,
+                                **meta, "proposal_id": proposal_id, "run_id": run_id,
                                 "lines_added": sum(ln.startswith("+") for ln in lines),
                                 "lines_removed": sum(ln.startswith("-") for ln in lines),
                                 "original_sha256": config.fingerprint(doc.content),
@@ -318,9 +389,10 @@ def submit_proposal(store: Store, *, document_id: str, base_version: int, policy
                                 "review_flags": flags})
             return store.proposal(proposal_id, conn)  # type: ignore[return-value]
     except WorkflowError as exc:
-        store.record_event("proposal.submission_failed", actor=actor, status="error",
-                           subject=("document", document_id),
-                           metadata={**meta, "code": exc.code, **exc.details}, error=str(exc))
+        if _conn is None:
+            store.record_event("proposal.submission_failed", actor=actor, status="error",
+                               subject=("document", document_id),
+                               metadata={**meta, "code": exc.code, **exc.details}, error=str(exc))
         raise
 
 
@@ -409,72 +481,364 @@ def parse_verdict(reply: str) -> dict[str, Any] | None:
     return None
 
 
-def ingest_agent_reply(store: Store, reply: str, *, actor: str,
-                       provenance: dict[str, Any]) -> dict[str, Any]:
-    """Record an agent's classifications and submit its corrections as pending proposals.
+# ---- authenticated runs, retrievals and findings ----------------------------------------
 
-    Only `category`, `document_version`, `reason`/`evidence` and `proposed_content` are read
-    from each document entry. Any status or approval claims in the reply are ignored.
+RUN_TTL = timedelta(minutes=30)
+RUN_LEASE = timedelta(seconds=90)
+MAX_EVIDENCE = 1_000
+MAX_FINDING_REASON = 1_000
+RUN_ID_RE = re.compile(r"^run-[0-9a-f]{16}$")
+
+
+def _normalize(text: str) -> str:
+    return " ".join(text.split())
+
+
+def open_run(store: Store, policy_id: str, document_ids: list[str], *, actor: str,
+             agent_id: str | None = None, ttl: timedelta = RUN_TTL,
+             metadata: dict[str, Any] | None = None) -> tuple[AgentRun, str]:
+    """Only trusted local orchestration mints these short-lived capabilities."""
+    if not document_ids or len(set(document_ids)) != len(document_ids):
+        raise WorkflowError("document_ids must be a non-empty list without duplicates")
+    if not timedelta(0) < ttl <= RUN_TTL:
+        raise WorkflowError("run lifetime must be positive and at most 30 minutes")
+    store.reap_runs()
+    run_id, token = f"run-{secrets.token_hex(8)}", "urt_" + secrets.token_urlsafe(32)
+    created = datetime.now(UTC)
+    with store.write() as conn:
+        policy = store.policy(policy_id, conn=conn)
+        if policy is None:
+            raise NotFound("unknown policy")
+        docs = [store.document(d, conn=conn) for d in document_ids]
+        if any(d is None for d in docs):
+            raise NotFound("run contains an unknown document")
+        versions = {d.id: d.version for d in docs if d}
+        conn.execute(
+            "INSERT INTO agent_runs (id, policy_id, policy_version, document_ids, token_hash, "
+            "status, created_at, expires_at, agent_id, document_versions, lease_until, metadata) "
+            "VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?)",
+            (run_id, policy_id, policy.version, json.dumps(document_ids), _sha(token),
+             created.isoformat(), (created + ttl).isoformat(), agent_id, json.dumps(versions),
+             (created + min(ttl, RUN_LEASE)).isoformat(),
+             json.dumps(config.safe_metadata(metadata or {}))))
+        store.add_event(conn, "agent.run_started", actor=actor, subject=("run", run_id),
+                        metadata={**(metadata or {}), "run_id": run_id, "agent_id": agent_id,
+                                  "policy_id": policy_id, "policy_version": policy.version,
+                                  "document_ids": document_ids})
+        return store.run(run_id, conn), token
+
+
+def _open_run(store: Store, run_id: str, conn: sqlite3.Connection) -> AgentRun:
+    run = store.run(run_id, conn)
+    if run is None:
+        raise NotFound("unknown run")
+    if run.status != "open":
+        raise Conflict(f"run is {run.status}; it no longer accepts results")
+    if datetime.now(UTC) >= run.expires_at:
+        raise Conflict("run has expired")
+    if datetime.now(UTC) >= run.lease_until:
+        raise Conflict("runner heartbeat stopped")
+    policy = store.policy(run.policy_id, conn=conn)
+    if policy is None or policy.version != run.policy_version:
+        raise Conflict("policy version changed during the run")
+    return run
+
+
+def authorize_run(store: Store, run_id: str, run_token: str,
+                  conn: sqlite3.Connection) -> AgentRun:
+    if not isinstance(run_id, str) or not RUN_ID_RE.fullmatch(run_id):
+        raise Unauthorized("invalid run credentials")
+    row = conn.execute("SELECT token_hash FROM agent_runs WHERE id = ?", (run_id,)).fetchone()
+    if (row is None or not isinstance(run_token, str) or not row['token_hash']
+            or not hmac.compare_digest(_sha(run_token), row['token_hash'])):
+        raise Unauthorized("invalid run credentials")
+    return _open_run(store, run_id, conn)
+
+
+def heartbeat_run(store: Store, run_id: str, *, provenance: dict[str, Any] | None = None) -> None:
+    """Runner-only lease renewal. MCP clients cannot renew or bind external identities."""
+    with store.write() as conn:
+        run = _open_run(store, run_id, conn)
+        refs = provenance or {}
+        conn.execute("UPDATE agent_runs SET lease_until = ?, thread_id = COALESCE(?, thread_id), "
+                     "message_id = COALESCE(?, message_id) WHERE id = ?",
+                     (min(run.expires_at, datetime.now(UTC) + RUN_LEASE).isoformat(),
+                      refs.get('thread_id'), refs.get('message_id'), run_id))
+
+
+def close_run(store: Store, run_id: str, *, status: str, actor: str,
+              provenance: dict[str, Any] | None = None, metadata: dict[str, Any] | None = None,
+              error: str | None = None, _conn: sqlite3.Connection | None = None) -> AgentRun:
+    # The first terminal transition wins; cleanup/retries must not rewrite it.
+    if status not in {'completed', 'incomplete', 'failed', 'expired', 'interrupted'}:
+        raise WorkflowError("invalid terminal run status")
+    with store.write(_conn) as conn:
+        run = store.run(run_id, conn)
+        if run is None:
+            raise NotFound("unknown run")
+        if run.status != 'open':
+            return run
+        refs = provenance or {}
+        combined = config.safe_metadata({**run.metadata, **(metadata or {})})
+        conn.execute("UPDATE agent_runs SET status = ?, closed_at = ?, "
+                     "thread_id = COALESCE(?, thread_id), message_id = COALESCE(?, message_id), "
+                     "metadata = ?, error = ? WHERE id = ?",
+                     (status, now(), refs.get('thread_id'), refs.get('message_id'),
+                      json.dumps(combined), config.safe_text(error, 500) if error else None, run_id))
+        findings = store.findings(run_id=run_id, conn=conn)
+        store.add_event(conn, 'agent.run_finished', actor=actor,
+                        status='ok' if status == 'completed' else 'error', subject=('run', run_id),
+                        metadata={**combined, **refs, 'run_id': run_id, 'run_status': status,
+                                  'findings_recorded': len(findings),
+                                  'documents_without_finding': sorted(set(run.document_ids)
+                                      - {f.document_id for f in findings})}, error=error)
+        return store.run(run_id, conn)
+
+
+def retrieve_for_run(store: Store, *, run_id: str, run_token: str,
+                     kind: str, subject_id: str, actor: str):
+    """Authenticate and record the exact version served, in the same transaction.
+
+    Unscoped MCP reads are intentionally never evidence for any run. Tool failures
+    are recorded with version 0, allowing an honest UNKNOWN with no document version.
     """
-    summary: dict[str, Any] = {"classifications": {}, "proposals": [], "errors": []}
-    verdict = parse_verdict(reply)
-    if verdict is None:
-        store.record_event("agent.reply_unparsed", actor=actor, status="error",
-                           metadata={"provenance": provenance, "reply_length": len(reply)},
-                           error="no JSON verdict block in the agent reply")
-        summary["errors"].append({"error": "no JSON verdict block"})
-        return summary
+    store.reap_runs()
+    failure = None
+    with store.write() as conn:
+        run = authorize_run(store, run_id, run_token, conn)
+        if kind == 'policy':
+            if subject_id != run.policy_id:
+                raise WorkflowError("policy is outside the run scope")
+            value = store.policy(subject_id, conn=conn)
+            expected = run.policy_version
+        elif kind == 'document':
+            if subject_id not in run.document_ids:
+                raise WorkflowError("document is outside the run scope")
+            value = store.document(subject_id, conn=conn)
+            expected = run.document_versions.get(subject_id)
+        else:
+            raise WorkflowError("invalid retrieval kind")
+        if value is None:
+            failure = 'document retrieval failed' if kind == 'document' else 'policy retrieval failed'
+        elif value.version != expected:
+            failure = 'version changed during the run'
+        version = value.version if value is not None and not failure else 0
+        conn.execute("INSERT INTO run_retrievals VALUES (?, ?, ?, ?, ?, ?, ?) "
+                     "ON CONFLICT(run_id, kind, subject_id, version) DO NOTHING",
+                     (run_id, kind, subject_id, version, 'error' if failure else 'ok', failure, now()))
+        store.add_event(conn, 'agent.retrieval', actor=actor,
+                        status='error' if failure else 'ok', subject=(kind, subject_id),
+                        metadata={'run_id': run_id, 'kind': kind, 'version': version}, error=failure)
+    if failure:
+        raise Conflict(failure)
+    return value
 
-    reported = verdict.get("policy") if isinstance(verdict.get("policy"), dict) else {}
-    policy_id = str(reported.get("id", ""))
+
+def retrieval_status(store: Store, run: AgentRun,
+                     conn: sqlite3.Connection | None = None) -> dict[str, Any]:
+    with store.read(conn) as c:
+        rows = c.execute("SELECT * FROM run_retrievals WHERE run_id = ? AND status = 'ok'",
+                         (run.id,)).fetchall()
+        policy = sorted({r['version'] for r in rows if r['kind'] == 'policy'
+                         and r['subject_id'] == run.policy_id and r['version'] == run.policy_version})
+        docs = {d: sorted({r['version'] for r in rows if r['kind'] == 'document'
+                          and r['subject_id'] == d and r['version'] == run.document_versions.get(d)})
+                for d in run.document_ids}
+    missing = ([] if policy else [f'policy:{run.policy_id}']) + [d for d, v in docs.items() if not v]
+    return {'policy_versions': policy, 'document_versions': docs,
+            'missing': missing, 'complete': not missing}
+
+
+def _validate_finding(store: Store, conn: sqlite3.Connection, run: AgentRun, *,
+                      policy_id: str, policy_version: int | None, document_id: str,
+                      document_version: int | None, classification: str,
+                      evidence: str, reason: str) -> bool:
+    if not isinstance(classification, str) or classification not in CATEGORIES:
+        raise WorkflowError("invalid classification category")
+    if policy_id != run.policy_id or not (
+            (policy_version is None and classification == 'UNKNOWN')
+            or (type(policy_version) is int and policy_version == run.policy_version)):
+        raise Conflict("finding policy must match the run's policy version")
+    if document_id not in run.document_ids:
+        raise WorkflowError("document is outside the run scope")
+    if not isinstance(reason, str) or not reason.strip() or len(reason) > MAX_FINDING_REASON:
+        raise WorkflowError("finding reason must be 1-1000 characters")
+    if not isinstance(evidence, str) or len(evidence) > MAX_EVIDENCE:
+        raise WorkflowError("finding evidence must be a string of at most 1000 characters")
+    if config.redact(reason) != reason or config.redact(evidence) != evidence:
+        raise WorkflowError("credentials are forbidden in finding text")
+    if document_version is not None and (type(document_version) is not int or document_version < 1):
+        raise WorkflowError("document_version must be a positive integer or null for UNKNOWN")
+    retrieval = retrieval_status(store, run, conn)
+    doc_read = bool(retrieval['document_versions'][document_id])
+    if classification == 'UNKNOWN' and document_version is None:
+        if evidence:
+            raise WorkflowError("UNKNOWN without a retrieved version cannot quote evidence")
+        # A response can be lost after the server served it. UNKNOWN is never
+        # publication evidence, so do not force the agent to invent that version.
+        return False
+    doc = store.document(document_id, conn=conn)
+    if doc is None or document_version != doc.version or document_version != run.document_versions.get(document_id):
+        raise Conflict("stale document version")
+    verified = doc_read and bool(retrieval['policy_versions'])
+    if not doc_read or (classification != 'UNKNOWN' and not verified):
+        raise WorkflowError("authenticated policy and document retrieval is required")
+    if not evidence or evidence not in doc.content:
+        raise WorkflowError("evidence must be an exact quote from the retrieved document")
+    return verified
+
+
+def _save_finding(store: Store, conn: sqlite3.Connection, run: AgentRun, *,
+                  document_id: str, document_version: int | None, classification: str,
+                  evidence: str, reason: str, actor: str, source: str) -> tuple[Finding, bool]:
+    verified = _validate_finding(store, conn, run, policy_id=run.policy_id,
+        policy_version=run.policy_version, document_id=document_id, document_version=document_version,
+        classification=classification, evidence=evidence, reason=reason)
+    submission = _sha(json.dumps([run.policy_version, document_version, classification, evidence, reason]))
+    existing = conn.execute("SELECT * FROM findings WHERE run_id = ? AND document_id = ?",
+                            (run.id, document_id)).fetchone()
+    meta = {'run_id': run.id, 'document_id': document_id, 'document_version': document_version,
+            'policy_id': run.policy_id, 'policy_version': run.policy_version, 'category': classification}
+    if existing:
+        if existing['submission_sha256'] != submission:
+            raise Conflict("a different finding was already recorded for this document in this run")
+        return store._finding(existing), True
+    fid = f'fnd-{secrets.token_hex(8)}'
+    conn.execute("INSERT INTO findings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 (fid, run.id, run.policy_id, run.policy_version, document_id, document_version,
+                  classification, evidence, reason.strip(), int(verified), submission, now(), source))
+    store.add_event(conn, 'finding.recorded', actor=actor, subject=('document', document_id),
+                    metadata={**meta, 'finding_id': fid, 'retrieved_during_run': verified, 'source': source})
+    return store.findings(run_id=run.id, document_id=document_id, conn=conn)[0], False
+
+
+def record_finding(store: Store, *, run_id: str, run_token: str, policy_id: str,
+                   policy_version: int | None, document_id: str, document_version: int | None,
+                   classification: str, evidence: str, reason: str,
+                   actor: str) -> tuple[Finding, bool]:
+    store.reap_runs()
+    authenticated = False
     try:
-        with store.read() as conn:
-            policy, _ = _policy_context(store, policy_id, conn)
-            candidates = {c.document_id: c for c in detect_candidates(store, policy_id, conn)}
-            known_docs = set(store.document_ids())
-    except NotFound as exc:
-        store.record_event("agent.reply_rejected", actor=actor, status="error",
-                           metadata={"provenance": provenance, "policy_id": policy_id},
-                           error=str(exc))
-        summary["errors"].append({"error": str(exc)})
-        return summary
-    policy_matches = reported.get("version") == policy.version
-    store.record_event("agent.verdict_received", actor=actor, subject=("policy", policy.id),
-                       status="ok" if policy_matches else "error", metadata={
-                           "provenance": provenance, "reported_policy_version": reported.get("version"),
-                           "current_policy_version": policy.version,
-                           "changes_made_claimed": verdict.get("changes_made")},
-                       error=None if policy_matches else "agent analysed a non-current policy version")
-    if not policy_matches:
-        summary["errors"].append({"error": "policy version mismatch"})
-        return summary
+        with store.write() as conn:
+            run = authorize_run(store, run_id, run_token, conn)
+            authenticated = True
+            _validate_finding(store, conn, run, policy_id=policy_id, policy_version=policy_version,
+                document_id=document_id, document_version=document_version, classification=classification,
+                evidence=evidence, reason=reason)
+            return _save_finding(store, conn, run, document_id=document_id,
+                document_version=document_version, classification=classification,
+                evidence=evidence, reason=reason, actor=actor, source='mcp')
+    except WorkflowError as exc:
+        # Never persist untrusted ids or credentials from rejected submissions.
+        store.record_event('finding.rejected', actor=actor,
+                           status='denied' if isinstance(exc, Unauthorized) else 'error',
+                           metadata={'run_id': run_id if authenticated else None},
+                           error=type(exc).__name__ + ': ' + config.redact(
+                               str(exc), run_token if isinstance(run_token, str) else None))
+        raise
 
-    entries = verdict.get("documents") if isinstance(verdict.get("documents"), dict) else {}
-    for document_id, entry in sorted(entries.items()):
-        entry = entry if isinstance(entry, dict) else {}
-        category = str(entry.get("category", "UNKNOWN")).upper()
-        if document_id not in known_docs or category not in CATEGORIES:
-            summary["errors"].append({"document_id": document_id, "error": "unknown id or category"})
-            continue
-        cand = candidates.get(document_id)
-        scan = "actionable" if cand and cand.actionable else "protected" if cand else "not_stale"
-        agrees = (category == "OUTDATED") == (scan == "actionable")
-        summary["classifications"][document_id] = category
-        store.record_event("agent.classification", actor=actor, subject=("document", document_id),
-                           metadata={"category": category, "deterministic_scan": scan,
-                                     "agrees_with_scan": agrees, "provenance": provenance,
-                                     "document_version": entry.get("document_version"),
-                                     "policy_version": policy.version})
-        proposed = entry.get("proposed_content")
-        if category != "OUTDATED" or not isinstance(proposed, str):
-            continue
-        try:
-            proposal = submit_proposal(
-                store, document_id=document_id, base_version=entry.get("document_version"),
-                policy_id=policy.id, policy_version=policy.version, proposed_content=proposed,
-                reason=str(entry.get("reason") or entry.get("evidence") or "").strip()[:MAX_REASON],
-                actor=actor, provenance=provenance, evidence=entry.get("evidence"))
-            summary["proposals"].append(proposal.id)
-        except WorkflowError as exc:
-            summary["errors"].append({"document_id": document_id, "error": str(exc)})
+
+def ingest_agent_reply(store: Store, reply: str, *, actor: str,
+                       provenance: dict[str, Any], run_id: str | None = None,
+                       execution_status: str | None = None,
+                       metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Trusted runner finalization: validate the whole batch before any proposals.
+
+    Live findings survive rejected final output. Final JSON can fill missing findings,
+    but must pass exactly the same scope, version, quote and retrieval checks. Findings,
+    proposals and the completed run commit together, or proposals all roll back.
+    """
+    summary: dict[str, Any] = {'classifications': {}, 'proposals': [], 'errors': []}
+    if not run_id:
+        summary['errors'].append({'error': 'an authenticated analysis run is required'})
+        return summary
+    store.reap_runs()
+    run = store.run(run_id)
+    if run is None or run.status != 'open':
+        summary['errors'].append({'error': 'run is not open'})
+        return summary
+    provenance = {**config.safe_metadata(provenance), 'run_id': run_id}
+    if execution_status != 'success':
+        close_run(store, run_id, status='interrupted' if execution_status == 'cancelled' else 'failed',
+                  actor=actor, provenance=provenance, metadata=metadata, error='agent execution did not succeed')
+        summary['errors'].append({'error': 'agent execution did not succeed'})
+        return summary
+    document_id = None
+    try:
+        with store.write() as conn:
+            run = _open_run(store, run_id, conn)
+            verdict = parse_verdict(reply)
+            if verdict is None:
+                raise WorkflowError('no JSON verdict block')
+            entries = verdict.get('documents')
+            if not isinstance(entries, dict) or set(entries) != set(run.document_ids):
+                raise WorkflowError('final document set must exactly match the run scope')
+            all_unknown = all(isinstance(entry, dict) and entry.get('category') == 'UNKNOWN'
+                              for entry in entries.values())
+            policy = verdict.get('policy')
+            if (not isinstance(policy, dict) or policy.get('id') != run.policy_id
+                    or not ((all_unknown and policy.get('version') is None)
+                        or (type(policy.get('version')) is int and policy['version'] == run.policy_version))):
+                raise Conflict('policy version mismatch')
+            current = store.policy(run.policy_id, conn=conn)
+            if not ((all_unknown and policy.get('voluntary_return_days') is None)
+                    or (type(policy.get('voluntary_return_days')) is int
+                        and policy['voluntary_return_days'] == current.voluntary_return_days)):
+                raise WorkflowError('reported policy facts do not match the authoritative policy')
+            if verdict.get('changes_made') is not False:
+                raise WorkflowError('agent must report changes_made=false')
+            recorded = {f.document_id: f for f in store.findings(run_id=run_id, conn=conn)}
+            for did, entry in entries.items():
+                document_id = did
+                if not isinstance(entry, dict):
+                    raise WorkflowError('invalid document finding')
+                category, version = entry.get('category'), entry.get('document_version')
+                evidence, reason = entry.get('evidence'), entry.get('reason')
+                _validate_finding(store, conn, run, policy_id=run.policy_id,
+                    policy_version=run.policy_version, document_id=did, document_version=version,
+                    classification=category, evidence=evidence, reason=reason)
+                existing = recorded.get(did)
+                if existing and (existing.category, existing.document_version, existing.evidence, existing.reason) != (
+                        category, version, evidence, reason.strip()):
+                    raise Conflict('final reply contradicts the recorded finding')
+                if category == 'OUTDATED' and (not isinstance(entry.get('proposed_content'), str)
+                                             or not entry['proposed_content'].strip()):
+                    raise WorkflowError('OUTDATED finding requires a correction')
+            # All findings are valid before inserting compatibility fallback rows.
+            for did, entry in entries.items():
+                document_id = did
+                if did not in recorded:
+                    recorded[did], _ = _save_finding(store, conn, run, document_id=did,
+                        document_version=entry.get('document_version'), classification=entry['category'],
+                        evidence=entry['evidence'], reason=entry['reason'], actor=actor, source='final_json')
+            retrieval = retrieval_status(store, run, conn)
+            complete = retrieval['complete'] and all(f.category != 'UNKNOWN' for f in recorded.values())
+            if complete:
+                for did, entry in entries.items():
+                    document_id = did
+                    if entry['category'] != 'OUTDATED':
+                        continue
+                    p = submit_proposal(store, document_id=did, base_version=entry['document_version'],
+                        policy_id=run.policy_id, policy_version=run.policy_version,
+                        proposed_content=entry['proposed_content'], reason=entry['reason'], actor=actor,
+                        evidence=entry['evidence'], provenance=provenance,
+                        run_id=run_id, finding_id=recorded[did].id, _conn=conn)
+                    summary['proposals'].append(p.id)
+            else:
+                summary['errors'].append({'error': 'analysis has UNKNOWN findings or incomplete retrieval'})
+            summary['classifications'] = {d: f.category for d, f in recorded.items()}
+            close_run(store, run_id, status='completed' if complete else 'incomplete', actor=actor,
+                      provenance=provenance, metadata={**(metadata or {}), 'retrieval': retrieval},
+                      error=None if complete else summary['errors'][0]['error'], _conn=conn)
+    except WorkflowError as exc:
+        diagnostic = config.safe_metadata({'error': str(exc), 'code': exc.code,
+            **({'document_id': document_id} if document_id else {}),
+            **({'details': exc.details} if exc.details else {})})
+        summary = {'classifications': {}, 'proposals': [], 'errors': [diagnostic]}
+        store.record_event('agent.reply_rejected', actor=actor, status='error', subject=('run', run_id),
+                           metadata={'run_id': run_id, **diagnostic}, error=str(exc))
+        current_run = store.run(run_id)
+        if current_run and current_run.status == 'open':
+            close_run(store, run_id, status='incomplete', actor=actor, provenance=provenance,
+                      metadata=metadata, error=str(exc))
     return summary

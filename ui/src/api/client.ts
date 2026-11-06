@@ -90,6 +90,6 @@ export const api = {
   reject: (id: string, note: string | null) =>
     authorized<{ proposal: Proposal }>(`/api/proposals/${enc(id)}/reject`, { note }),
   apply: (id: string) => authorized<{ proposal: Proposal }>(`/api/proposals/${enc(id)}/apply`, {}),
-  changePolicy: (policyId: string, body: { voluntary_return_days: number; effective_from: string; description: string }) =>
+  changePolicy: (policyId: string, body: { expected_version: number; voluntary_return_days: number; effective_from: string; description: string }) =>
     authorized<{ policy: Policy }>(`/api/policies/${enc(policyId)}/versions`, body),
 };

@@ -21,7 +21,7 @@ export function ActivityView({ focusRun }: { focusRun: string | null }) {
   const now = useNow(5000);
   const runs = useRuns();
   const [filter, setFilter] = useState<EventGroup | null>(null);
-  const items = useMemo(() => buildTimeline(live.events), [live.events]);
+  const items = useMemo(() => buildTimeline(live.events, runs.data?.runs), [live.events, runs.data]);
   const shown = useMemo(() => items.filter((i) => matches(i, filter)).sort((a, b) => itemSeq(b) - itemSeq(a)), [items, filter]);
   const counts = useMemo(() => {
     const m = new Map<EventGroup, number>();
@@ -120,7 +120,7 @@ export function ActivityView({ focusRun }: { focusRun: string | null }) {
           ) : (
             <ul className="plain-list">
               {runs.data.runs.map((r) => {
-                const state = r.status === "running" ? "running" : r.errors.length ? "error" : "ok";
+                const state = r.status === "open" ? "running" : r.status !== "completed" ? "error" : "ok";
                 return (
                   <li key={r.id}>
                     <a href={`#/activity/${encodeURIComponent(r.id)}`} className={`run-index-item${focusRun === r.id ? " is-active" : ""}`}>
@@ -133,7 +133,7 @@ export function ActivityView({ focusRun }: { focusRun: string | null }) {
                           {state === "running"
                             ? "in progress"
                             : state === "error"
-                              ? "no usable verdict"
+                              ? r.status
                               : `${Object.keys(r.classifications).length} findings · ${plural(r.proposals.length, "proposal")}`}
                           {r.cost?.total && ` · ${formatCost(r.cost.total)}`}
                         </span>

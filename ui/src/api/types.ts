@@ -28,6 +28,9 @@ export interface Channel {
 }
 
 export interface Finding {
+  id?: string;
+  run_status?: string;
+  verified_conclusion?: boolean;
   category: Category;
   classified_at: string;
   run_id: string | null;
@@ -66,6 +69,7 @@ export interface ImpactDocument {
   version: number;
   updated_at: string;
   finding: Finding | null;
+  provisional_findings?: { id: string; run_id: string; run_status: string; category: Category; evidence: string; reason: string }[];
   prefilter: Prefilter;
   proposals: ProposalSummary[];
 }
@@ -108,7 +112,7 @@ export interface TraceStep {
 
 export interface RunSummary {
   id: string;
-  status: "running" | "success" | "error" | string;
+  status: "open" | "completed" | "incomplete" | "failed" | "expired" | "interrupted";
   started_at: string;
   finished_at: string | null;
   duration_s: number | null;
@@ -138,6 +142,7 @@ export interface RunDetail extends RunSummary {
 }
 
 export interface ImpactSnapshot {
+  active_run_ids?: string[];
   policy: Policy;
   policy_title: string;
   policy_versions: PolicyVersion[];
@@ -167,6 +172,9 @@ export interface EventsPage {
 }
 
 export interface Proposal {
+  run_id?: string | null;
+  finding_id?: string | null;
+  evidence?: string;
   id: string;
   document_id: string;
   base_version: number;
@@ -193,6 +201,7 @@ export interface ReviewFlag {
 }
 
 export interface ProposalDetail {
+  evidence?: string;
   proposal: Proposal;
   events: ActivityEvent[];
   review_flags: ReviewFlag[];

@@ -1,14 +1,14 @@
-"""Read-only views for the UI: agent runs and the impact snapshot.
+"""UI projections of canonical SQLite runs, findings and proposals.
 
-Everything here is derived from persisted data: the SQLite store, the activity log, and the
-redacted run records that run_impact.py writes to runs/impact_*.json. The activity log never
-holds document text, so the agent's evidence quotes come from those run records; each quote
-is checked against the stored document version it refers to.
+JSON files enrich optional execution traces and pre-v3 archival quotes. New product
+state, identities and evidence never depend on those files or event ordering.
+Expired capabilities and abandoned runner leases are reaped when runs are queried.
 """
 
 from __future__ import annotations
 
 import json
+from functools import wraps
 from pathlib import Path
 from typing import Any
 
@@ -18,20 +18,27 @@ from models import Event
 from store import Store
 
 RUNS_DIR = config.ROOT / "runs"
-RUN_RESULT_TYPES = ("agent.verdict_received", "agent.classification", "agent.reply_unparsed",
-                    "agent.reply_rejected", "proposal.created", "proposal.submission_failed")
-
 _record_cache: dict[Path, tuple[float, dict[str, Any] | None]] = {}
 
 
 def _load_record(path: Path) -> dict[str, Any] | None:
-    mtime = path.stat().st_mtime
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return None
     cached = _record_cache.get(path)
     if cached and cached[0] == mtime:
         return cached[1]
     try:
         record = json.loads(path.read_text(encoding="utf-8"))
         record = record if isinstance(record, dict) else None
+        if record is not None:
+            if not isinstance(record.get('provenance'), dict):
+                record = None
+            else:
+                record = {**record,
+                    'reply': record.get('reply') if isinstance(record.get('reply'), str) else '',
+                    'events': record.get('events') if isinstance(record.get('events'), list) else []}
     except (OSError, ValueError):
         record = None
     _record_cache[path] = (mtime, record)
@@ -59,13 +66,24 @@ def _trace(stream: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Condensed Cominty stream: finished LLM steps and tool calls, as reported by Cominty."""
     steps = []
     for e in stream:
+        if not isinstance(e, dict):
+            continue
         data = e.get("data") or {}
-        if e.get("status") not in {"success", "error"} or e.get("name") not in {"llm", "tool_call"}:
+        if not isinstance(data, dict):
+            continue
+        if e.get("status") not in ("success", "error") or e.get("name") not in ("llm", "tool_call"):
             continue
         steps.append({"kind": e["name"], "status": e["status"], "tool": data.get("name"),
                       "model": data.get("model"),
                       "description": config.safe_text(str(data.get("description") or ""), 400)})
     return steps
+
+
+def legacy_entry(record: dict[str, Any], document_id: str) -> dict[str, Any]:
+    verdict = workflow.parse_verdict(record.get('reply', '')) or {}
+    documents = verdict.get('documents')
+    entry = documents.get(document_id) if isinstance(documents, dict) else None
+    return entry if isinstance(entry, dict) else {}
 
 
 def _call(e: Event) -> dict[str, Any]:
@@ -77,52 +95,65 @@ def _call(e: Event) -> dict[str, Any]:
             "error": e.error}
 
 
+def event_run_id(event: Event, runs: list[Any]) -> str | None:
+    """Explicit correlation only, except for frozen pre-v3 archival windows."""
+    rid = event.metadata.get('run_id') or (event.metadata.get('provenance') or {}).get('run_id')
+    if rid:
+        return rid
+    mid = event.metadata.get('message_id') or (event.metadata.get('provenance') or {}).get('message_id')
+    for run in runs:
+        if run.metadata.get('legacy'):
+            if mid and run.message_id == mid:
+                return run.id
+            start, finish = run.metadata.get('legacy_start_seq'), run.metadata.get('legacy_finish_seq')
+            if start is not None and start <= event.seq <= (finish or start):
+                return run.id
+    return None
+
+
+def consistent_projection(fn):
+    @wraps(fn)
+    def project(store, *args, **kwargs):
+        if store._snapshot.get() is None:
+            store.reap_runs()
+        with store.snapshot():
+            return fn(store, *args, **kwargs)
+    return project
+
+
+@consistent_projection
 def agent_runs(store: Store, runs_dir: Path = RUNS_DIR,
                events: list[Event] | None = None) -> list[dict[str, Any]]:
-    """Agent runs reconstructed from run_started/run_finished events, newest first."""
+    """Persisted runs/findings are authoritative. Files only enrich archival traces."""
     events = events if events is not None else store.events(limit=100_000)
     records = run_records(runs_dir)
-    starts = [e for e in events if e.type == "agent.run_started"]
-    runs = []
-    for i, start in enumerate(starts):
-        next_start = starts[i + 1].seq if i + 1 < len(starts) else None
-        finish = next((e for e in events if e.type == "agent.run_finished" and e.seq > start.seq
-                       and (next_start is None or e.seq < next_start)), None)
-        meta = finish.metadata if finish else {}
-        message_id = meta.get("message_id")
-        end = finish.seq if finish else (next_start or float("inf"))
-        calls = [_call(e) for e in events
-                 if e.type == "mcp.tool_call" and start.seq < e.seq < end]
-        results = [e for e in events if finish and e.seq > finish.seq and e.type in RUN_RESULT_TYPES
-                   and (e.metadata.get("provenance") or {}).get("message_id") == message_id]
-        record = records.get(str(message_id)) if message_id else None
-        verdict = workflow.parse_verdict(record.get("reply", "")) if record else None
-        failed = [e for e in results if e.status == "error"]
-        runs.append({
-            "id": message_id or f"run-{start.seq}",
-            "status": "running" if finish is None else ("error" if finish.status == "error"
-                                                         else meta.get("status", "success")),
-            "started_at": start.ts.isoformat(),
-            "finished_at": finish.ts.isoformat() if finish else None,
-            "duration_s": meta.get("duration_s"),
-            "agent_id": start.metadata.get("agent_id"),
-            "thread_id": meta.get("thread_id"),
-            "message_id": message_id,
-            "cost": meta.get("cost"),
-            "retrieval": meta.get("retrieval"),
-            "mcp_calls": calls,
-            "classifications": {e.subject_id: e.metadata.get("category") for e in results
-                                if e.type == "agent.classification"},
-            "proposals": [e.subject_id for e in results if e.type == "proposal.created"],
-            "errors": [e.error for e in failed if e.error],
-            "event_range": [start.seq, max([finish.seq if finish else start.seq]
-                                           + [e.seq for e in results])],
-            "record_file": record.get("file") if record else None,
-            "verdict": verdict,
-            "explanation": _explanation(record.get("reply", "")) if record else None,
-            "trace": _trace(record.get("events") or []) if record else [],
+    states = store.runs()
+    result = []
+    for run in reversed(states):
+        related = [e for e in events if event_run_id(e, states) == run.id]
+        findings = store.findings(run_id=run.id)
+        meta = run.metadata
+        record = records.get(run.message_id or '')
+        seqs = [e.seq for e in related]
+        result.append({
+            'id': run.id, 'status': run.status, 'policy_id': run.policy_id,
+            'policy_version': run.policy_version, 'document_ids': run.document_ids,
+            'started_at': run.created_at.isoformat(),
+            'finished_at': run.closed_at.isoformat() if run.closed_at else None,
+            'expires_at': run.expires_at.isoformat(), 'duration_s': meta.get('duration_s'),
+            'agent_id': run.agent_id, 'thread_id': run.thread_id, 'message_id': run.message_id,
+            'cost': meta.get('cost'), 'retrieval': meta.get('retrieval') or workflow.retrieval_status(store, run),
+            'mcp_calls': [_call(e) for e in related if e.type == 'mcp.tool_call'],
+            'classifications': {f.document_id: f.category for f in findings},
+            'proposals': [p.id for p in store.proposals() if p.run_id == run.id],
+            'errors': [run.error] if run.error else [],
+            'event_range': [min(seqs), max(seqs)] if seqs else [0, 0],
+            'record_file': record.get('file') if record else None,
+            'verdict': workflow.parse_verdict(record.get('reply', '')) if record else None,
+            'explanation': _explanation(record.get('reply', '')) if record else None,
+            'trace': _trace(record.get('events') or []) if record else [],
         })
-    return list(reversed(runs))
+    return result
 
 
 def _proposal_summary(p: Any) -> dict[str, Any]:
@@ -131,55 +162,63 @@ def _proposal_summary(p: Any) -> dict[str, Any]:
             "created_by": p.created_by}
 
 
+@consistent_projection
 def impact_snapshot(store: Store, policy_id: str, runs_dir: Path = RUNS_DIR) -> dict[str, Any]:
     history = store.policy_history(policy_id)
     if not history:
         raise workflow.NotFound(f"unknown policy {policy_id!r}")
     policy = history[-1]
     events = store.events(limit=100_000)
-    runs = agent_runs(store, runs_dir, events)
-    runs_by_id = {r["id"]: r for r in runs}
-    latest: dict[str, Event] = {}
-    for e in events:
-        if e.type == "agent.classification" and e.subject_id:
-            latest[e.subject_id] = e
+    runs = [r for r in agent_runs(store, runs_dir, events) if r['policy_id'] == policy_id]
+    states = {r.id: r for r in store.runs()}
     candidates = {c.document_id: c for c in workflow.detect_candidates(store, policy_id)}
     proposals = store.proposals()
-
+    findings = [f for f in store.findings() if f.policy_id == policy_id]
+    records = run_records(runs_dir)
     documents = []
     for doc in store.documents():
         finding = None
-        ev = latest.get(doc.id)
-        if ev is not None:
-            prov = ev.metadata.get("provenance") or {}
-            run = runs_by_id.get(str(prov.get("message_id")))
-            verdict = (run or {}).get("verdict") or {}
-            entry = (verdict.get("documents") or {}).get(doc.id) or {}
-            doc_version = ev.metadata.get("document_version", entry.get("document_version"))
-            policy_version = ev.metadata.get("policy_version",
-                                             (verdict.get("policy") or {}).get("version"))
-            evidence = entry.get("evidence") if isinstance(entry.get("evidence"), str) else None
-            analysed = (store.document(doc.id, doc_version)
-                        if type(doc_version) is int else None)
+        matches = [f for f in findings if f.document_id == doc.id]
+        if matches:
+            # Only reconciled, authenticated conclusions outrank provisional findings.
+            f = max(matches, key=lambda f: (
+                f.policy_version == policy.version and (f.document_version == doc.version
+                    or (f.category == 'UNKNOWN' and states[f.run_id].document_versions.get(doc.id) == doc.version)),
+                states[f.run_id].status == 'completed' and f.retrieved_during_run
+                    and f.category != 'UNKNOWN',
+                f.category != 'UNKNOWN', f.created_at))
+            run = states[f.run_id]
+            evidence, reason = f.evidence, f.reason
+            if f.source == 'legacy':
+                record = records.get(run.message_id or '') or {}
+                entry = legacy_entry(record, doc.id)
+                evidence = entry.get('evidence') if isinstance(entry.get('evidence'), str) else evidence
+                reason = entry.get('reason') if isinstance(entry.get('reason'), str) else reason
+            analysed = store.document(doc.id, f.document_version) if f.document_version is not None else None
+            c = candidates.get(doc.id)
+            scan = 'actionable' if c and c.actionable else 'protected' if c else 'not_stale'
             finding = {
-                "category": ev.metadata.get("category"),
-                "classified_at": ev.ts.isoformat(),
-                "run_id": prov.get("message_id"),
-                "thread_id": prov.get("thread_id"),
-                "agent_id": prov.get("agent_id"),
-                "document_version": doc_version,
-                "policy_version": policy_version,
-                "evidence": evidence,
-                "evidence_verified": bool(evidence and analysed and evidence in analysed.content),
-                "reason": entry.get("reason") if isinstance(entry.get("reason"), str) else None,
-                "prefilter": ev.metadata.get("deterministic_scan"),
-                "agrees_with_prefilter": ev.metadata.get("agrees_with_scan"),
-                "current": doc_version == doc.version and policy_version == policy.version,
+                'verified_conclusion': run.status == 'completed' and f.retrieved_during_run
+                    and f.category != 'UNKNOWN',
+                'id': f.id, 'category': f.category, 'classified_at': f.created_at.isoformat(),
+                'run_id': f.run_id, 'run_status': run.status, 'thread_id': run.thread_id,
+                'agent_id': run.agent_id, 'document_version': f.document_version,
+                'policy_version': f.policy_version, 'evidence': evidence or None,
+                'evidence_verified': bool(evidence and analysed and evidence in analysed.content),
+                'retrieved_during_run': f.retrieved_during_run, 'source': f.source,
+                'reason': reason or None, 'prefilter': scan,
+                'agrees_with_prefilter': (f.category == 'OUTDATED') == (scan == 'actionable'),
+                'current': f.policy_version == policy.version and (
+                    f.document_version == doc.version or (f.category == 'UNKNOWN'
+                    and run.document_versions.get(doc.id) == doc.version)),
             }
         c = candidates.get(doc.id)
         documents.append({
             **doc.model_dump(mode="json"),
             "finding": finding,
+            "provisional_findings": [f.model_dump(mode='json') | {'run_status': states[f.run_id].status}
+                for f in reversed(matches) if states[f.run_id].status != 'completed'
+                or not f.retrieved_during_run or f.category == 'UNKNOWN'],
             "prefilter": {"state": "actionable" if c and c.actionable else
                           "protected" if c else "not_stale",
                           "stale_sentences": c.stale_sentences if c else [],
@@ -202,6 +241,7 @@ def impact_snapshot(store: Store, policy_id: str, runs_dir: Path = RUNS_DIR) -> 
                              "created_by": created[p.version][1]} for p in history],
         "activity": counts,
         "runs_total": len(runs),
+        "active_run_ids": [r['id'] for r in runs if r['status'] == 'open'],
         "channels": store.channels(),
         "documents": documents,
         "latest_run": {k: v for k, v in runs[0].items()

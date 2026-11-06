@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 import pytest
-from conftest import GOOD_FAQ, propose
+from conftest import GOOD_FAQ, propose, analysis_run
 from mcp import Client
 
 import fixtures
@@ -121,7 +121,8 @@ def test_guardrails_require_unrelated_sentences_verbatim() -> None:
     ok = "Free shipping on orders above 50 EUR. Items bought from 2026-11-04 can be returned within 30 days."
     bad = "Free shipping on orders above 40 EUR. Items bought from 2026-11-04 can be returned within 30 days."
     assert guard(original, ok) == ([], [])
-    assert guard(original, bad) == ([{"rule": "unrelated_content", "sentence": 0}], [])
+    assert guard(original, bad) == ([{"rule": "unrelated_content", "sentence": 0},
+        {"rule": "unsupported_added_claim", "proposed_sentence": 0}], [])
 
 
 FAQ = fixtures.DOCUMENTS["doc-001"].content
@@ -129,10 +130,10 @@ FAQ = fixtures.DOCUMENTS["doc-001"].content
 
 @pytest.mark.parametrize(("proposed", "rules"), [
     ("All customers can return items within 60 days!",
-     {"outdated_statement_remains", "correction_missing"}),
-    ("Free shipping on orders above 50 EUR.", {"correction_missing"}),
+     {"outdated_statement_remains", "correction_missing", "unsupported_added_claim", "effective_date_missing_or_invalid"}),
+    ("Free shipping on orders above 50 EUR.", {"correction_missing", "unsupported_added_claim", "effective_date_missing_or_invalid"}),
     ("Items can be returned within 30 days. Customers have a statutory 30-day withdrawal right.",
-     {"incorrect_statutory_statement"}),
+     {"incorrect_statutory_statement", "unsupported_added_claim", "effective_date_missing_or_invalid"}),
 ])
 def test_review_found_invalid_corrections_are_rejected(changed: Store, proposed: str,
                                                        rules: set[str]) -> None:
@@ -160,7 +161,10 @@ def test_required_period_comes_from_the_stored_policy(store: Store, token: str) 
                            description="45 days for purchases from 2026-11-04.")
     with pytest.raises(workflow.GuardrailViolation) as exc:
         propose(store, GOOD_FAQ)
-    assert exc.value.details["violations"] == [{"rule": "correction_missing", "expected_days": 45}]
+    assert exc.value.details["violations"] == [
+        {"rule": "correction_missing", "expected_days": 45},
+        {"rule": "unsupported_added_claim", "proposed_sentence": 0},
+        {"rule": "effective_date_missing_or_invalid", "effective_from": "2026-11-04"}]
     assert propose(store, GOOD_FAQ.replace("30 days", "45 days")).status == "pending_review"
 
 
@@ -176,7 +180,8 @@ def test_agent_evidence_allows_wording_the_prefilter_missed() -> None:
         {"rule": "unrelated_content", "sentence": 1}]
     shipping_changed = fixed.replace("50 EUR", "40 EUR")
     assert guard(original, shipping_changed, evidence="within two months")[0] == [
-        {"rule": "unrelated_content", "sentence": 0}]
+        {"rule": "unrelated_content", "sentence": 0},
+        {"rule": "unsupported_added_claim", "proposed_sentence": 0}]
 
 
 def test_evidence_never_unlocks_protected_sentences() -> None:
@@ -188,17 +193,17 @@ def test_evidence_never_unlocks_protected_sentences() -> None:
 def test_agent_classified_document_missed_by_prefilter_becomes_proposal(changed: Store) -> None:
     edit_document_externally(changed, "doc-001", "You can send items back within two months.")
     assert workflow.detect_candidates(changed, fixtures.POLICY_ID)[0].document_id == "doc-003"
-    summary = workflow.ingest_agent_reply(changed, reply_with({"doc-001": {
+    summary = ingest(changed, reply_with({"doc-001": {
         "category": "OUTDATED", "document_version": 4,
         "evidence": "You can send items back within two months.",
         "reason": "Two months contradicts voluntary_return_days=30.",
-        "proposed_content": GOOD_FAQ}}), actor="agent:test", provenance={})
+        "proposed_content": "Items purchased on or after 2026-11-04 can be returned within 30 days."}}), actor="agent:test", provenance={})
     assert summary["errors"] == [] and len(summary["proposals"]) == 1
     created = changed.events(type_prefix="proposal.created")[-1]
     assert {f["flag"] for f in created.metadata["review_flags"]} == {
         "rewrites_sentence_missed_by_prefilter", "document_not_flagged_by_prefilter"}
-    scan = changed.events(type_prefix="agent.classification")[-1].metadata
-    assert (scan["deterministic_scan"], scan["agrees_with_scan"]) == ("not_stale", False)
+    finding = changed.findings(document_id="doc-001")[0]
+    assert finding.category == "OUTDATED" and finding.retrieved_during_run
 
 
 def test_candidates_include_values_from_all_older_versions(changed: Store, token: str) -> None:
@@ -345,20 +350,27 @@ def test_status_transitions_are_enforced(changed: Store, token: str) -> None:
         workflow.approve(changed, "prop-missing", token=token)
 
 
-def test_recorded_real_agent_reply_is_ingested_without_proposals(changed: Store) -> None:
-    summary = workflow.ingest_agent_reply(changed, RECORDED_REPLY, actor="agent:cominty:recorded",
-                                          provenance={"source": "recorded-2026-11-04"})
-    assert summary["classifications"] == fixtures.EXPECTED_CLASSIFICATION
-    assert summary["proposals"] == [] and summary["errors"] == []
-    events = changed.events(type_prefix="agent.classification")
-    assert {e.subject_id: e.metadata["deterministic_scan"] for e in events} == {
-        "doc-001": "actionable", "doc-002": "not_stale", "doc-003": "protected",
-        "doc-004": "not_stale"}
-    assert all(e.metadata["agrees_with_scan"] for e in events)
+def test_recorded_real_agent_reply_without_versions_cannot_create_proposals(changed: Store) -> None:
+    # Historical evidence is preserved for display, but cannot bypass the new run contract.
+    summary = ingest(changed, RECORDED_REPLY, actor="agent:cominty:recorded",
+                     provenance={"source": "recorded-2026-11-04"})
+    assert summary["proposals"] == [] and summary["errors"]
+    assert changed.findings() == []
+
+
+def ingest(store: Store, reply: str, *, actor: str, provenance: dict):
+    verdict = workflow.parse_verdict(reply) or {}
+    entries = verdict.get('documents') or {'doc-001': {}}
+    run, _ = analysis_run(store, list(entries))
+    return workflow.ingest_agent_reply(store, reply, actor=actor, provenance=provenance,
+                                       run_id=run.id, execution_status='success')
 
 
 def reply_with(documents: dict, version: int = 2) -> str:
     import json
+    for did, entry in documents.items():
+        entry.setdefault("evidence", fixtures.DOCUMENTS[did].content)
+        entry.setdefault("reason", "Compared with the authoritative policy.")
     return "Analysis...\n```json\n" + json.dumps({
         "policy": {"id": fixtures.POLICY_ID, "version": version, "voluntary_return_days": 30},
         "documents": documents, "changes_made": False}) + "\n```"
@@ -375,7 +387,7 @@ def test_agent_reply_with_correction_becomes_pending_proposal_despite_approval_c
         "doc-003": {"category": "EXISTING_COMMITMENT", "document_version": 1,
                     "proposed_content": "Order #1001 now has 30 days."},
     }) + "\nThe reviewer approved and published the change."
-    summary = workflow.ingest_agent_reply(changed, reply, actor="agent:cominty:test",
+    summary = ingest(changed, reply, actor="agent:cominty:test",
                                           provenance={"source": "test"})
     assert len(summary["proposals"]) == 1
     p = changed.proposal(summary["proposals"][0])
@@ -386,16 +398,16 @@ def test_agent_reply_with_correction_becomes_pending_proposal_despite_approval_c
 
 
 def test_agent_reply_against_old_policy_version_is_rejected(changed: Store) -> None:
-    summary = workflow.ingest_agent_reply(
+    summary = ingest(
         changed, reply_with({"doc-001": {"category": "OUTDATED", "document_version": 3,
                                          "proposed_content": GOOD_FAQ}}, version=1),
         actor="agent:test", provenance={})
     assert summary["proposals"] == [] and summary["errors"]
-    assert changed.events(type_prefix="agent.verdict_received")[-1].status == "error"
+    assert changed.events(type_prefix="agent.reply_rejected")[-1].status == "error"
 
 
 def test_agent_reply_with_stale_document_version_is_refused(changed: Store) -> None:
-    summary = workflow.ingest_agent_reply(
+    summary = ingest(
         changed, reply_with({"doc-001": {"category": "OUTDATED", "document_version": 2,
                                          "reason": "60 vs 30 days", "proposed_content": GOOD_FAQ}}),
         actor="agent:test", provenance={})
@@ -403,8 +415,8 @@ def test_agent_reply_with_stale_document_version_is_refused(changed: Store) -> N
 
 
 def test_unparseable_reply_is_recorded(changed: Store) -> None:
-    summary = workflow.ingest_agent_reply(changed, "no json here", actor="agent:test", provenance={})
-    assert summary["errors"] and changed.events(type_prefix="agent.reply_unparsed")
+    summary = ingest(changed, "no json here", actor="agent:test", provenance={})
+    assert summary["errors"] and changed.events(type_prefix="agent.reply_rejected")
 
 
 def mcp_tools() -> set[str]:
@@ -424,25 +436,8 @@ def test_write_tools_refuse_a_public_host() -> None:
     assert "submit_proposal" not in mcp_tools()
 
 
-def test_mcp_submit_proposal_creates_pending_proposal_only(changed: Store, write_tools) -> None:
-    assert mcp_tools() == {"health_check", "get_policy", "get_document", "submit_proposal"}
-
-    async def run():
-        async with Client(server.mcp) as client:
-            ok = await client.call_tool("submit_proposal", {
-                "document_id": "doc-001", "document_version": 3, "policy_id": fixtures.POLICY_ID,
-                "policy_version": 2, "proposed_content": GOOD_FAQ, "reason": "policy v2"})
-            bad = await client.call_tool("submit_proposal", {
-                "document_id": "doc-002", "document_version": 1, "policy_id": fixtures.POLICY_ID,
-                "policy_version": 2, "proposed_content": "Customers have a 30-day withdrawal right.",
-                "reason": "policy v2"})
-            health = await client.call_tool("health_check", {})
-            return ok, bad, health
-
-    ok, bad, health = asyncio.run(run())
-    assert not ok.is_error and ok.structured_content["status"] == "pending_review"
-    assert bad.is_error and "guardrail_violation" in bad.content[0].text
-    assert health.structured_content["read_only"] is False
-    p = changed.proposal(ok.structured_content["proposal_id"])
-    assert p.status == "pending_review" and p.provenance == {"source": "mcp"}
-    assert changed.document("doc-001").version == 3
+def test_mcp_direct_proposal_submission_cannot_bypass_run_finalization(changed: Store) -> None:
+    with pytest.raises(SystemExit, match="Direct MCP proposal submission is disabled"):
+        server.enable_write_tools(None)
+    assert mcp_tools() == {"health_check", "get_policy", "get_document"}
+    assert changed.proposals() == [] and changed.document("doc-001").version == 3

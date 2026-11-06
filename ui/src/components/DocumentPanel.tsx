@@ -58,6 +58,14 @@ export function DocumentPanel({ doc, channel, policy, onClose }: {
         )}
       </div>
 
+      {f?.verified_conclusion === false && <p className="note note-warn">Provisional {f.category} finding: this analysis has not established a verified conclusion.</p>}
+      {Boolean(doc.provisional_findings?.length) && <div className="insp-block">
+        <h3>Provisional findings</h3>
+        {doc.provisional_findings?.map((item) => <details key={item.id}>
+          <summary>{item.category} ? {item.run_status} ? <a href={`#/activity/${item.run_id}`}>{shortId(item.run_id)}</a></summary>
+          {item.evidence && <blockquote className="quote">{item.evidence}</blockquote>}<p>{item.reason}</p>
+        </details>)}
+      </div>}
       <div className="insp-block">
         <h3>Published text</h3>
         <p className="published">
@@ -79,10 +87,11 @@ export function DocumentPanel({ doc, channel, policy, onClose }: {
               </p>
             </>
           ) : (
-            <p className="muted">The run record for this finding is unavailable, so its quote cannot be shown.</p>
+            <p className="muted">No evidence quote was retrieved for this finding. See the reason below.</p>
           )}
           {f.reason && <p className="reasoning">{f.reason}</p>}
           <dl className="facts">
+            {f.run_status && <><dt>Run status</dt><dd>{f.run_status}</dd></>}
             <dt>Prefilter</dt>
             <dd>
               {PREFILTER_LABEL[f.prefilter ?? ""] ?? "—"}

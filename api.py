@@ -23,6 +23,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import config
@@ -53,6 +54,7 @@ class EmptyBody(BaseModel):
 
 class PolicyChangeBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1, strict=True)
     voluntary_return_days: int
     effective_from: date
     description: str = Field(min_length=1, max_length=4000)
@@ -118,12 +120,25 @@ async def _body(request: Request, model: type[BaseModel]) -> Any:
                                      fields=[".".join(map(str, e["loc"])) for e in exc.errors()])
 
 
+def _legacy_proposal_evidence(proposal: Any, store: Store, runs_dir: Path) -> str:
+    # Only historical proposals lack a persisted quote. Never use the latest finding.
+    if not proposal.run_id:
+        return ""
+    run = store.run(proposal.run_id)
+    if run is None or not run.metadata.get('legacy'):
+        return ""
+    record = readmodel.run_records(runs_dir).get(run.message_id or '') or {}
+    quote = readmodel.legacy_entry(record, proposal.document_id).get('evidence')
+    return quote if isinstance(quote, str) and quote in proposal.original_content else ""
+
+
 def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
               ui_dir: Path | None = UI_DIST) -> ASGIApp:
     async def health(_: Request) -> JSONResponse:
         return JSONResponse({"status": "ok", "database": store.path.name})
 
     async def events(request: Request) -> JSONResponse:
+        await run_in_threadpool(store.reap_runs)
         q = request.query_params
         subject = (q["subject_type"], q["subject_id"]) if "subject_type" in q and "subject_id" in q else None
         try:
@@ -138,7 +153,15 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
             items = store.events(after=after, limit=max(1, min(limit, MAX_EVENTS)),
                                  type_prefix=q.get("type"), subject=subject)
         latest = store.events(limit=1, latest=True)
-        return JSONResponse({"events": [e.model_dump(mode="json") for e in items],
+        states = store.runs()
+        serialized = []
+        for e in items:
+            item = e.model_dump(mode="json")
+            rid = readmodel.event_run_id(e, states)
+            if rid:
+                item['metadata']['run_id'] = rid
+            serialized.append(item)
+        return JSONResponse({"events": serialized,
                              "next_after": items[-1].seq if items else after,
                              "latest_seq": latest[0].seq if latest else 0})
 
@@ -157,6 +180,7 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
         doc, pol = store.document(p.document_id), store.policy(p.policy_id)
         return JSONResponse({
             "proposal": p.model_dump(mode="json"),
+            "evidence": p.evidence or _legacy_proposal_evidence(p, store, runs_dir),
             "events": [e.model_dump(mode="json") for e in audit],
             "review_flags": (created.metadata.get("review_flags") or []) if created else [],
             "checks": {
@@ -183,30 +207,31 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
                                             for c in workflow.detect_candidates(store, pid)]})
 
     async def impact(request: Request) -> JSONResponse:
-        return JSONResponse(readmodel.impact_snapshot(store, request.path_params["policy_id"],
-                                                      runs_dir))
+        return JSONResponse(await run_in_threadpool(readmodel.impact_snapshot, store,
+                            request.path_params["policy_id"], runs_dir))
 
     async def runs(_: Request) -> JSONResponse:
-        items = readmodel.agent_runs(store, runs_dir)
+        items = await run_in_threadpool(readmodel.agent_runs, store, runs_dir)
         return JSONResponse({"runs": [{k: v for k, v in r.items()
                                        if k not in {"verdict", "explanation", "trace"}}
                                       for r in items]})
 
     async def run(request: Request) -> JSONResponse:
         rid = request.path_params["run_id"]
-        found = next((r for r in readmodel.agent_runs(store, runs_dir) if r["id"] == rid), None)
+        items = await run_in_threadpool(readmodel.agent_runs, store, runs_dir)
+        found = next((r for r in items if r["id"] == rid), None)
         if found is None:
             raise workflow.NotFound(f"unknown run {rid!r}")
         return JSONResponse({"run": found})
 
     async def session(request: Request) -> JSONResponse:
-        reviewer = workflow.authorize(store, _token(request), "session.verify",
-                                      ("session", "reviewer"))
+        reviewer = await run_in_threadpool(workflow.authorize, store, _token(request), "session.verify",
+                                           ("session", "reviewer"))
         return JSONResponse({"reviewer": reviewer})
 
     async def change_policy(request: Request) -> JSONResponse:
         body = await _body(request, PolicyChangeBody)
-        new, candidates = workflow.change_policy(
+        new, candidates = await run_in_threadpool(workflow.change_policy,
             store, request.path_params["policy_id"], token=_token(request), **body.model_dump())
         return JSONResponse({"policy": new.model_dump(mode="json"),
                              "candidates": [{**c.__dict__, "actionable": c.actionable}
@@ -217,11 +242,11 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
             pid = request.path_params["proposal_id"]
             if action == "apply":
                 await _body(request, EmptyBody)
-                p = workflow.apply(store, pid, token=_token(request))
+                p = await run_in_threadpool(workflow.apply, store, pid, token=_token(request))
             else:
                 body = await _body(request, ReviewBody)
                 fn = workflow.approve if action == "approve" else workflow.reject
-                p = fn(store, pid, token=_token(request), note=body.note)
+                p = await run_in_threadpool(fn, store, pid, token=_token(request), note=body.note)
             return JSONResponse({"proposal": p.model_dump(mode="json")})
         return handler
 
@@ -260,6 +285,7 @@ def main() -> None:
     config.load_env()
     store = Store()
     store.init()
+    store.reap_runs()
     port = int(os.environ.get("UNDRIFT_API_PORT", config.DEFAULT_API_PORT))
     ui = "UI" if (UI_DIST / "index.html").is_file() else "UI not built yet (see SETUP.md);"
     print(f"Undrift {ui} http://127.0.0.1:{port}/  API http://127.0.0.1:{port}/api (local only)")

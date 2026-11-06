@@ -3,8 +3,13 @@
 Run:  python server.py
 The only route is /mcp/<MCP_PATH_SECRET> (plus /mcp/<MCP_PATH_SECRET_NEXT> while a rotation
 is staged); every other path returns 404. Every tool call is recorded in the activity log.
-The proposal-submitting write tool exists only with UNDRIFT_MCP_WRITE_TOOLS=1 and never
-while MCP_PUBLIC_HOST is set.
+
+Optional tools, all off by default:
+- record_finding (UNDRIFT_MCP_FINDINGS=1): records one classification per document for an
+  open agent run. Requires that run's token, issued locally by run_impact.py. With
+  MCP_PUBLIC_HOST set it additionally needs UNDRIFT_MCP_FINDINGS_PUBLIC=1.
+- Direct submit_proposal access is retired: UNDRIFT_MCP_WRITE_TOOLS=1 fails closed.
+No MCP tool can approve, apply or publish anything.
 """
 
 from __future__ import annotations
@@ -32,7 +37,7 @@ from models import Document, Policy
 from store import Store
 
 SERVER_NAME = "undrift-shiftly"
-SERVER_VERSION = "0.2.0"
+SERVER_VERSION = "0.3.0"
 SLOT_HEADER = b"x-undrift-secret-slot"
 READ_TOOLS = ["health_check", "get_policy", "get_document"]
 
@@ -41,13 +46,13 @@ log = logging.getLogger("undrift")
 READ_ONLY = ToolAnnotations(
     read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
 )
-SUBMIT_ONLY = ToolAnnotations(
-    read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=False
-)
-
 Identifier = Annotated[str, Field(min_length=1, max_length=64)]
 
-_state: dict[str, Any] = {"store": None, "write_tools": False}
+_state: dict[str, Any] = {"store": None, "findings_tool": False}
+CATEGORY = Literal["OUTDATED", "VALID_DISTINCT", "EXISTING_COMMITMENT", "UNRELATED", "UNKNOWN"]
+RECORD_ONLY = ToolAnnotations(
+    read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+)
 
 
 def store() -> Store:
@@ -64,6 +69,7 @@ class Health(BaseModel):
     status: Literal["ok"]
     server: str
     version: str
+    database_id: str
     read_only: bool
     tools: list[str]
     policy_ids: list[str]
@@ -71,14 +77,14 @@ class Health(BaseModel):
     server_time: datetime
 
 
-class ProposalReceipt(BaseModel):
-    proposal_id: str
-    status: str
+class FindingReceipt(BaseModel):
+    finding_id: str
+    status: Literal["recorded", "duplicate"]
+    run_id: str
     document_id: str
-    base_version: int
-    policy_id: str
-    policy_version: int
-    diff: str
+    document_version: int | None
+    classification: str
+    recorded_at: datetime
 
 
 mcp = MCPServer(
@@ -86,8 +92,10 @@ mcp = MCPServer(
     title="Undrift MCP (Shiftly)",
     version=SERVER_VERSION,
     instructions=(
-        "Read-only access to Shiftly's current return policy and to published content "
-        "documents (fictional test data). Call health_check to discover available ids."
+        "Read Shiftly's policy and documents (fictional data). Authenticated runs must pass "
+        "run_id and run_token to every read. When enabled, record_finding stores individual "
+        "results; only the trusted runner can finalize proposals for human review. "
+        "Call health_check to discover available tools and ids."
     ),
 )
 
@@ -96,7 +104,7 @@ mcp = MCPServer(
 def instrumented(ctx: Context | None, tool: str, subject: tuple[str, str] | None,
                  **meta: Any) -> Iterator[dict[str, Any]]:
     """Log and persist one tool call. Persists only ids, versions and timings."""
-    log.info("tool %s %s", tool, " ".join(f"{k}={v!r}" for k, v in meta.items()))
+    log.info("tool %s %s", tool, config.safe_text(" ".join(f"{k}={v!r}" for k, v in meta.items()), 400))
     try:
         headers = (ctx.headers if ctx else None) or {}
     except ValueError:
@@ -129,8 +137,9 @@ def health_check(ctx: Context) -> Health:
             status="ok",
             server=SERVER_NAME,
             version=SERVER_VERSION,
-            read_only=not _state["write_tools"],
-            tools=READ_TOOLS + (["submit_proposal"] if _state["write_tools"] else []),
+            database_id=store().identity(),
+            read_only=not _state["findings_tool"],
+            tools=READ_TOOLS + (["record_finding"] if _state["findings_tool"] else []),
             policy_ids=store().policy_ids(),
             document_ids=store().document_ids(),
             server_time=datetime.now(UTC),
@@ -141,12 +150,14 @@ def health_check(ctx: Context) -> Health:
 def get_policy(
     policy_id: Annotated[Identifier, Field(description="Policy id, e.g. 'shiftly-returns'")],
     ctx: Context,
+    run_id: Annotated[str | None, Field(max_length=40)] = None,
+    run_token: Annotated[str | None, Field(max_length=128)] = None,
 ) -> Policy:
     """Return the company's current, authoritative policy with the given id."""
     with instrumented(ctx, "get_policy", ("policy", policy_id), policy_id=policy_id) as meta:
-        policy = store().policy(policy_id)
+        policy = _read_for_run("policy", policy_id, run_id, run_token, meta)
         if policy is None:
-            raise ToolError(f"Unknown policy_id {policy_id!r}. Known ids: {store().policy_ids()}")
+            raise ToolError(config.redact(f"Unknown policy_id {policy_id!r}. Known ids: {store().policy_ids()}"))
         meta["version"] = policy.version
         return policy
 
@@ -155,54 +166,86 @@ def get_policy(
 def get_document(
     document_id: Annotated[Identifier, Field(description="Document id, e.g. 'doc-001'")],
     ctx: Context,
+    run_id: Annotated[str | None, Field(max_length=40)] = None,
+    run_token: Annotated[str | None, Field(max_length=128)] = None,
 ) -> Document:
     """Return one published content document (channel, title, content, version, updated_at)."""
     with instrumented(ctx, "get_document", ("document", document_id),
                       document_id=document_id) as meta:
-        document = store().document(document_id)
+        document = _read_for_run("document", document_id, run_id, run_token, meta)
         if document is None:
-            raise ToolError(
-                f"Unknown document_id {document_id!r}. Known ids: {store().document_ids()}")
+            raise ToolError(config.redact(
+                f"Unknown document_id {document_id!r}. Known ids: {store().document_ids()}"))
         meta["version"] = document.version
         return document
 
 
-def submit_proposal(
-    document_id: Annotated[Identifier, Field(description="Document to correct")],
-    document_version: Annotated[int, Field(description="Version you read with get_document")],
-    policy_id: Annotated[Identifier, Field(description="Policy the correction implements")],
-    policy_version: Annotated[int, Field(description="Policy version you read with get_policy")],
-    proposed_content: Annotated[str, Field(min_length=1, max_length=workflow.MAX_CONTENT,
-                                           description="Full corrected document text")],
-    reason: Annotated[str, Field(min_length=1, max_length=workflow.MAX_REASON,
-                                 description="Why the document must change")],
+def _read_for_run(kind: str, subject_id: str, run_id: str | None,
+                  run_token: str | None, meta: dict[str, Any]) -> Any:
+    if run_id is None and run_token is None:
+        return store().policy(subject_id) if kind == "policy" else store().document(subject_id)
+    if not run_id or not run_token:
+        raise ToolError("run_id and run_token must be supplied together")
+    try:
+        value = workflow.retrieve_for_run(store(), run_id=run_id, run_token=run_token,
+            kind=kind, subject_id=subject_id, actor=f"mcp:{meta['user_agent']}")
+    except workflow.WorkflowError as exc:
+        raise ToolError(f"{exc.code}: {exc}") from exc
+    meta['run_id'] = run_id
+    return value
+
+
+def record_finding(
+    run_id: Annotated[str, Field(min_length=1, max_length=40, description="Run ID from the task")],
+    run_token: Annotated[str, Field(min_length=1, max_length=128,
+                                    description="Run token from the task, copied exactly")],
+    policy_id: Annotated[Identifier, Field(description="Policy id you retrieved")],
+    policy_version: Annotated[int | None, Field(strict=True, description="Retrieved policy version; null only for UNKNOWN after policy retrieval failure")],
+    document_id: Annotated[Identifier, Field(description="Document you classified")],
+    document_version: Annotated[int | None, Field(strict=True, description="Retrieved version; null only for UNKNOWN after retrieval failure")],
+    classification: Annotated[CATEGORY, Field(description="Exactly one category")],
+    evidence: Annotated[str, Field(max_length=1000,
+                                   description="Exact sentence quoted from the retrieved content; "
+                                               "empty only for UNKNOWN")],
+    reason: Annotated[str, Field(min_length=1, max_length=1000,
+                                 description="Which policy field or rule justifies the category")],
     ctx: Context,
-) -> ProposalReceipt:
-    """Submit a correction for human review. It does not change the document; a reviewer must
-    approve and apply it outside of MCP."""
-    with instrumented(ctx, "submit_proposal", ("document", document_id), document_id=document_id,
-                      document_version=document_version, policy_version=policy_version) as meta:
+) -> FindingReceipt:
+    """Record your classification of ONE document for the current analysis run. Call it once per
+    document, after retrieving the policy and that document. It only stores a finding for human
+    review: it cannot change documents, proposals or policies, and cannot approve or publish."""
+    with instrumented(ctx, "record_finding", ("document", document_id),
+                      document_id=document_id, document_version=document_version,
+                      classification=classification) as meta:
         try:
-            p = workflow.submit_proposal(
-                store(), document_id=document_id, base_version=document_version,
-                policy_id=policy_id, policy_version=policy_version,
-                proposed_content=proposed_content, reason=reason,
-                actor=f"mcp:{meta['user_agent']}", provenance={"source": "mcp"})
+            finding, duplicate = workflow.record_finding(
+                store(), run_id=run_id, run_token=run_token, policy_id=policy_id,
+                policy_version=policy_version, document_id=document_id,
+                document_version=document_version, classification=classification,
+                evidence=evidence, reason=reason, actor=f"mcp:{meta['user_agent']}")
         except workflow.WorkflowError as exc:
             raise ToolError(f"{exc.code}: {exc}") from exc
-        meta["proposal_id"] = p.id
-        return ProposalReceipt(proposal_id=p.id, status=p.status, document_id=p.document_id,
-                               base_version=p.base_version, policy_id=p.policy_id,
-                               policy_version=p.policy_version, diff=p.diff)
+        meta.update(finding_id=finding.id, duplicate=duplicate, run_id=finding.run_id)
+        return FindingReceipt(finding_id=finding.id, status="duplicate" if duplicate else "recorded",
+                              run_id=finding.run_id, document_id=finding.document_id,
+                              document_version=finding.document_version,
+                              classification=finding.category, recorded_at=finding.created_at)
+
+
+def enable_findings_tool(public_host: str | None) -> None:
+    if public_host and not config.findings_public_allowed():
+        raise SystemExit("Refusing UNDRIFT_MCP_FINDINGS=1 on a public host without "
+                         "UNDRIFT_MCP_FINDINGS_PUBLIC=1 (see SETUP.md, record_finding).")
+    if not _state["findings_tool"]:
+        mcp.add_tool(record_finding, annotations=RECORD_ONLY)
+        _state["findings_tool"] = True
 
 
 def enable_write_tools(public_host: str | None) -> None:
-    if public_host:
-        raise SystemExit("Refusing UNDRIFT_MCP_WRITE_TOOLS=1 while MCP_PUBLIC_HOST is set: the "
-                         "shared-secret URL is not an adequate credential for write access.")
-    if not _state["write_tools"]:
-        mcp.add_tool(submit_proposal, annotations=SUBMIT_ONLY)
-        _state["write_tools"] = True
+    # A direct MCP proposal could be submitted before a run fails or finishes.
+    # Preserve the old flag as a fail-closed configuration error, never a bypass.
+    raise SystemExit("Direct MCP proposal submission is disabled. Use record_finding and "
+                     "trusted runner finalization after verified retrieval.")
 
 
 class SecretRotation:
@@ -258,8 +301,8 @@ class RedactedAccessLog:
                 config.redact(scope["path"], self.secret),
                 status["code"],
                 (time.perf_counter() - started) * 1000,
-                headers.get("host", "-"),
-                headers.get("user-agent", "-")[:80],
+                config.safe_text(headers.get("host", "-")),
+                config.safe_text(headers.get("user-agent", "-")[:80]),
             )
 
 
@@ -302,17 +345,22 @@ def main() -> None:
     if s.init():
         log.info("Initialized and seeded a new database")
     use_store(s)
+    s.reap_runs()
     if config.write_tools_enabled():
         enable_write_tools(host)
+    if config.findings_tool_enabled():
+        enable_findings_tool(host)
 
     log.info("Undrift MCP %s listening on http://127.0.0.1:%d%s", SERVER_VERSION, port,
              config.mcp_path("<redacted>"))
     log.info("Allowed public host: %s", host or "(none: localhost only)")
     log.info("Staged next secret path: %s", "accepted" if next_secret else "none")
-    log.info("Write tools: %s", "ENABLED (local only)" if _state["write_tools"] else "disabled")
+    log.info("Write tools: disabled (proposals require trusted run finalization)")
+    log.info("record_finding: %s", ("ENABLED" + (" on public host" if host else " (local only)"))
+             if _state["findings_tool"] else "disabled")
     s.record_event("server.started", actor="system", metadata={
         "version": SERVER_VERSION, "public_host": host, "next_secret_staged": bool(next_secret),
-        "write_tools": _state["write_tools"]})
+        "write_tools": False, "findings_tool": _state["findings_tool"]})
 
     uvicorn.run(
         build_app(secret, host, next_secret),

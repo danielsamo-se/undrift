@@ -24,6 +24,8 @@ SECRET_ENV_NAMES = ("MCP_PATH_SECRET", "MCP_PATH_SECRET_NEXT", "COMINTY_API_KEY"
 
 _MCP_PATH_RE = re.compile(r"/mcp/[A-Za-z0-9_\-]{16,}")
 _BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9_\-.~+/=]{8,}")
+# Recognizable across the runner and MCP processes, including echoed free text.
+_RUN_TOKEN_RE = re.compile(r"urt_[A-Za-z0-9_-]{43,}")
 _SECRET_KEY_RE = re.compile(r"(?i)(^|_)(secret|token|api_?key|password|authorization|cookie|"
                             r"credentials?|mcp_url)$")
 _CONTENT_KEY_RE = re.compile(r"(?i)(^|_)(content|text|body|evidence|reply|prompt|note|diff)$")
@@ -92,6 +94,14 @@ def write_tools_enabled() -> bool:
     return os.environ.get("UNDRIFT_MCP_WRITE_TOOLS", "0").strip() == "1"
 
 
+def findings_tool_enabled() -> bool:
+    return os.environ.get("UNDRIFT_MCP_FINDINGS", "0").strip() == "1"
+
+
+def findings_public_allowed() -> bool:
+    return os.environ.get("UNDRIFT_MCP_FINDINGS_PUBLIC", "0").strip() == "1"
+
+
 def known_secrets() -> list[str]:
     values = (os.environ.get(name, "").strip() for name in SECRET_ENV_NAMES)
     return [v for v in values if len(v) >= 8]
@@ -103,7 +113,7 @@ def redact(text: str, secret: str | None = None) -> str:
     for value in sorted(set(values), key=len, reverse=True):
         text = text.replace(value, "<redacted>")
     text = _MCP_PATH_RE.sub(f"{MCP_BASE_PATH}/<redacted>", text)
-    return _BEARER_RE.sub("Bearer <redacted>", text)
+    return _RUN_TOKEN_RE.sub("<redacted>", _BEARER_RE.sub("Bearer <redacted>", text))
 
 
 def fingerprint(text: str) -> str:
@@ -122,7 +132,7 @@ def safe_metadata(value: Any, _depth: int = 0) -> Any:
     if isinstance(value, dict):
         out: dict[str, Any] = {}
         for key, item in list(value.items())[:MAX_METADATA_ITEMS]:
-            key = str(key)
+            key = redact(str(key))
             if _SECRET_KEY_RE.search(key):
                 out[key] = "<redacted>"
             elif _CONTENT_KEY_RE.search(key) and isinstance(item, str):

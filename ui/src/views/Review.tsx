@@ -102,7 +102,9 @@ function ProposalBody({ detail, snap, doc, onChanged }: {
   const now = useNow();
   const { proposal: p, checks, review_flags: flags } = detail;
   const prov = p.provenance;
-  const finding = doc?.finding && doc.finding.run_id === prov.message_id ? doc.finding : null;
+  const evidence = detail.evidence ?? p.evidence ?? "";
+  const evidenceVerified = Boolean(evidence && p.original_content.includes(evidence));
+  const runId = p.run_id ?? prov.run_id;
   const policy = snap?.policy_versions.find((v) => v.version === p.policy_version) ?? null;
   const channel = snap?.channels.find((c) => c.id === doc?.channel);
   const open = p.status === "pending_review" || p.status === "approved";
@@ -152,12 +154,12 @@ function ProposalBody({ detail, snap, doc, onChanged }: {
 
         <section className="side-block">
           <h3>Original evidence</h3>
-          {finding?.evidence ? (
+          {evidence ? (
             <>
-              <blockquote className="quote">{finding.evidence}</blockquote>
-              <p className={`verify ${finding.evidence_verified ? "is-ok" : "is-warn"}`}>
-                {finding.evidence_verified ? <CircleCheck size={13} aria-hidden /> : <TriangleExclamationPoint size={13} aria-hidden />}
-                {finding.evidence_verified ? `Verbatim in stored v${finding.document_version}` : "Not found verbatim in the stored document"}
+              <blockquote className="quote">{evidence}</blockquote>
+              <p className={`verify ${evidenceVerified ? "is-ok" : "is-warn"}`}>
+                {evidenceVerified ? <CircleCheck size={13} aria-hidden /> : <TriangleExclamationPoint size={13} aria-hidden />}
+                {evidenceVerified ? `Verbatim in stored v${p.base_version}` : "Not found verbatim in the stored document"}
               </p>
             </>
           ) : (
@@ -193,9 +195,9 @@ function ProposalBody({ detail, snap, doc, onChanged }: {
             <dd>{prov.thread_id ? <CopyText value={prov.thread_id} display={shortId(prov.thread_id, 13)} label="thread id" /> : "—"}</dd>
             <dt>Run</dt>
             <dd>
-              {prov.message_id ? (
-                <a href={`#/activity/${encodeURIComponent(prov.message_id)}`}>
-                  {shortId(prov.message_id)} <ArrowRight size={11} aria-hidden />
+              {runId ? (
+                <a href={`#/activity/${encodeURIComponent(runId)}`}>
+                  {shortId(runId)} <ArrowRight size={11} aria-hidden />
                 </a>
               ) : (
                 "—"

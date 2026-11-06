@@ -7,7 +7,7 @@ import { ImpactBoard } from "../components/ImpactBoard";
 import { PolicyChangeDialog } from "../components/PolicyChangeDialog";
 import { UnlockDialog } from "../components/ReviewerSession";
 import { Disclosure, DocVersion, ErrorState, LoadingBlock, PolicyVersion, Section, Status } from "../components/ui";
-import { consistency, liveDocuments, nextAction, runInProgress } from "../lib/board";
+import { consistency, liveDocuments, nextAction } from "../lib/board";
 import { isStale, statusOf } from "../lib/classification";
 import { useImpact, useProposals } from "../lib/data";
 import { groupOf } from "../lib/events";
@@ -169,7 +169,7 @@ function Overview({ snap, proposals, reload }: { snap: ImpactSnapshot; proposals
             </button>
           }
         >
-          <ImpactBoard snapshot={snap} onSelect={(id) => navigate("impact", id)} live={liveDocs} analysing={runInProgress(live.events)} compact />
+          <ImpactBoard snapshot={snap} onSelect={(id) => navigate("impact", id)} live={liveDocs} analysing={(snap.active_run_ids?.length ?? 0) > 0} compact />
         </Section>
 
         <div className="overview-side">
@@ -201,10 +201,10 @@ function Overview({ snap, proposals, reload }: { snap: ImpactSnapshot; proposals
           >
             {run ? (
               <button className="run-card" onClick={() => navigate("activity", run.id)}>
-                <span className={`run-dot run-dot-${run.status === "running" ? "running" : run.errors.length ? "error" : "ok"}`} aria-hidden />
+                <span className={`run-dot run-dot-${run.status === "open" ? "running" : run.status !== "completed" ? "error" : "ok"}`} aria-hidden />
                 <span className="run-card-main">
                   <span className="run-card-title">
-                    {run.status === "running" ? "Agent run in progress" : `Last run ${relativeTime(run.finished_at ?? run.started_at, now)}`}
+                    {run.status === "open" ? "Agent run in progress" : `Last run ${run.status} - ${relativeTime(run.finished_at ?? run.started_at, now)}`}
                     <code className="muted">{shortId(run.id)}</code>
                   </span>
                   <span className="run-card-sub">

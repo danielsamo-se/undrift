@@ -20,12 +20,12 @@ Verified versions: Python 3.13.3, cominty-sdk 1.2.0, mcp 2.3.0, uvicorn 0.54.0.
 This writes a 256-bit `MCP_PATH_SECRET` to `.env` and never prints it. The endpoint is `/mcp/<secret>`; every other path returns 404.
 To rotate without downtime, use the staged procedure in step 12. `--rotate` replaces the secret immediately and breaks the registered URL.
 
-## 2. Local tests (30/30 protocol checks, 80 pytest tests, 26 UI tests)
+## 2. Local verification (isolated databases; no Cominty calls)
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\test_mcp.py
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
-.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe -m pytest -p no:cacheprovider --basetemp=.test-tmp\backend-manual
 ```
 
 `test_mcp.py` builds a throwaway database (seed plus the Shiftly policy change) and never touches `data/undrift.db`.
@@ -195,7 +195,7 @@ Before the first paid run:
 2. `python run_impact.py` (free) must print `instructions ... MATCH`, `model gate ... OK` and `local ... actionable=['doc-001']`.
 3. `python run_impact.py --run` performs ONE paid run. Evidence goes to `runs/impact_<timestamp>.json`, and the MCP calls the server saw during the run are listed from the activity log, including calls made by Cominty subagents.
 
-Write tool: `submit_proposal` exists only with `UNDRIFT_MCP_WRITE_TOOLS=1`, and `server.py` refuses to start that way while `MCP_PUBLIC_HOST` is set. It can only create `pending_review` proposals.
+Direct MCP proposal submission is retired. `UNDRIFT_MCP_WRITE_TOOLS=1` now refuses startup, including locally. Only trusted runner finalization can create agent proposals after the entire run passes validation. `record_finding` cannot create proposals.
 
 ## 14. Product UI (React + TypeScript)
 
@@ -225,3 +225,158 @@ For UI development with hot reload, keep `api.py` running and start `npm run dev
 - **Named Cloudflare Tunnel** with a custom domain: needs a Cloudflare account and a domain on Cloudflare. `cloudflared tunnel login`, `cloudflared tunnel create undrift`, then a DNS route such as `mcp.<yourdomain>` and a `config.yml` ingress to `http://127.0.0.1:8000`. The hostname stays stable across restarts, so the Cominty URL never changes. The server still runs on this PC.
 - **Render or Railway**: deploy `server.py` as a web service. Bind to `0.0.0.0:$PORT` (needs a small change: the host is currently pinned to `127.0.0.1`). Set `MCP_PATH_SECRET` and `MCP_PUBLIC_HOST` (the service hostname) as platform secrets. You get a stable HTTPS URL and no dependency on this PC. Free tiers may sleep, which adds cold-start latency to the agent's first tool call.
 - Either way, the secret path is a temporary measure. Before write tools are exposed publicly, move to OAuth: the Cominty form supports an OAuth Client ID and Secret.
+
+
+## 15. Run-scoped live findings (local implementation; not activated on the public server)
+
+The current source uses schema v3. `Store.init()` migrates v1/v2 transactionally and
+preserves existing policy/document versions, proposal content, review state, and events.
+Historical event-based runs get stable Undrift IDs; old open v2 runs are interrupted
+and their old tokens cannot be reused. Existing events are never rewritten. New proposals
+persist their original quote and finding/run references directly in SQLite.
+
+Do not run mixed old/new services against a database during rollout. Coordinate stopping
+and restarting the MCP server and review API first. No service restart, remote agent update,
+public finding enablement, migration of `data/undrift.db`, or paid run was performed as part
+of local implementation verification.
+
+- `UNDRIFT_MCP_FINDINGS=0` and `UNDRIFT_MCP_FINDINGS_PUBLIC=0` remain the defaults.
+- Every run-scoped `get_policy`, `get_document`, and `record_finding` call must carry
+  the run ID and secret run token. Unscoped reads remain available for preflight but
+  do not verify retrieval. Tokens expire after 30 minutes and cannot extend their lifetime.
+- The runner renews a 90-second lease every 20 seconds. API polling and startup reap
+  expired runs or abandoned leases into explicit terminal states. A hard-killed runner
+  can take up to 90 seconds plus the next poll to appear interrupted. Reads of an
+  accepted document version and its finding commit independently of the final reply.
+- Final JSON can fill missing findings, using the same checks. The exact document set,
+  policy facts, versions, quotes and accepted finding fields must agree. Failed execution,
+  UNKNOWN results, missing retrieval, invalid corrections or conflicts produce no proposals.
+  All proposals in a run commit together with completed run state, or none do.
+- Policy updates through the API require `expected_version` from the open editor.
+- New corrections use the bounded sentence forms in `agents/patch.md`. Other prose is
+  rejected for review rather than treated as safe. This is deliberately conservative,
+  and supports the current English voluntary-return policy, not arbitrary policies.
+
+### Offline verification
+
+Use a fresh test directory name for concurrent backend test runs. Every database used here
+is isolated; no command below invokes Cominty or touches the existing proposal.
+
+```powershell
+New-Item -ItemType Directory -Path .test-tmp -Force | Out-Null
+.\.venv\Scripts\python.exe -m pytest -p no:cacheprovider --basetemp=.test-tmp\backend-manual
+# Keep the protocol harness's throwaway files inside the workspace:
+$env:TEMP = "$PWD\.test-tmp"
+$env:TMP = $env:TEMP
+.\.venv\Scripts\python.exe scripts\test_mcp.py
+.\.venv\Scripts\python.exe scripts\test_findings_mcp.py
+$env:Path = "$PWD\.tools\node;$env:Path"
+cd ui
+npm test
+npm run typecheck
+npm run build
+cd ..
+```
+
+The second protocol suite starts its own loopback server with ephemeral credentials,
+`MCP_PUBLIC_HOST` empty, and public findings explicitly disabled. It verifies both MCP
+protocol modes, scoped retrieval, retries, rejection, UNKNOWN, revocation and credential hygiene.
+
+### First live Cominty finding test (only after implementation review and explicit go-ahead)
+
+1. Manually copy the updated `agents/patch.md` to the existing Cominty agent's instructions.
+   Do not change integration connections or broaden capabilities. This has not been done.
+2. Create a dedicated demonstration database so the original pending proposal is preserved.
+   In a new PowerShell terminal at the repository root:
+
+   ```powershell
+   $env:UNDRIFT_DB = "$PWD\data\record-finding-demo.db"
+   .\.venv\Scripts\python.exe cli.py init
+   .\.venv\Scripts\python.exe cli.py change-policy --shiftly-30
+   ```
+
+   Use a new filename if that demonstration database already contains proposals. The
+   CLI reads the existing reviewer credential without printing it. Do not reject or
+   apply `prop-04ca726838fc` to make room for this test.
+3. Coordinate stopping the existing MCP process. Leave the tunnel and registered URL
+   unchanged. In the same dedicated-database terminal, only after approval to expose
+   authenticated finding submissions through that existing tunnel:
+
+   ```powershell
+   $env:UNDRIFT_MCP_WRITE_TOOLS = "0"
+   $env:UNDRIFT_MCP_FINDINGS = "1"
+   $env:UNDRIFT_MCP_FINDINGS_PUBLIC = "1"
+   .\.venv\Scripts\python.exe server.py
+   ```
+
+   These are process-local overrides; do not edit `.env`. Keep the original public
+   hostname, path-secret rotation settings and port. Server startup should report
+   `record_finding: ENABLED on public host`.
+4. In a second terminal set the same `UNDRIFT_DB` and run the free preflight:
+
+   ```powershell
+   $env:UNDRIFT_DB = "$PWD\data\record-finding-demo.db"
+   .\.venv\Scripts\python.exe run_impact.py
+   ```
+
+   Require matching remote instructions, model and integration gates, and MCP endpoint
+   `record_finding available; scoped_reads=True; shared_database=True`. This checks the
+   configured endpoint through the tunnel and verifies the database identity, without starting an agent.
+5. In a third terminal, serve this database on a separate review port so the original
+   review service need not be restarted:
+
+   ```powershell
+   $env:UNDRIFT_DB = "$PWD\data\record-finding-demo.db"
+   $env:UNDRIFT_API_PORT = "8101"
+   .\.venv\Scripts\python.exe api.py
+   ```
+
+   Open `http://127.0.0.1:8101/#/impact` before the run.
+6. After explicit approval to spend Cominty credit, invoke exactly once in terminal two:
+
+   ```powershell
+   .\.venv\Scripts\python.exe run_impact.py --run
+   ```
+
+   Expect four individual persisted findings to appear during analysis, one canonical
+   `run-...` ID across views, and a completed run with one pending correction. No content
+   should be approved, applied, or published. Inspect Activity and the saved
+   `runs/impact_run-<id>.json` if the run is incomplete; do not blindly retry a paid call.
+7. A rerun against a document with an open proposal is intentionally refused during
+   finalization. Use a fresh isolated demo database or review the existing correction.
+   Reverting to the original server/database later requires another coordinated switch;
+   remove the process-local finding overrides when doing so.
+
+`max_steps` and the local timeout do not provide a monetary spending cap. Remote cancellation
+is best effort if the runner loses contact; inspect Cominty before authorizing a retry.
+
+
+### Reliability verification before a live run
+
+Findings appear immediately as provisional results. Only authenticated, determinate
+findings from a completed and reconciled run establish consistency. A current completed
+conclusion takes precedence over a provisional retry; retry evidence remains available
+in the document inspector and run activity. Historical findings without authenticated
+retrieval remain visible but do not establish verified consistency.
+
+Corrections replace only recognized simple return-eligibility sentences. Mixed clauses,
+conditions, refund-processing deadlines and unfamiliar phrasing fail closed for human
+revision. This deliberately limits the current demo's supported wording.
+
+Impact and run projections use a single SQLite read snapshot. The first terminal run
+transition wins; subsequent cleanup cannot overwrite it. Runner evidence is checkpointed
+atomically after acquiring the external handle and after each stream event. Failures
+attempt remote cancellation when a handle exists and no terminal result was received.
+Cancellation is bounded and best effort; a lost start response can still leave remote
+work whose identity was never delivered locally.
+
+The local vertical integration regression exercises MCP findings, final reconciliation,
+API projection and the actual TypeScript consistency function using an isolated database:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_reliability.py -q -p no:cacheprovider --basetemp=.test-tmp\reliability-review
+```
+
+The UI calculation portion uses the portable Node 24 binary in `.tools/node`; it skips
+that portion if the binary is unavailable. It does not contact Cominty or start an
+application service. Full regression commands remain in the offline verification section.

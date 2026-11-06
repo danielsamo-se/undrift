@@ -74,7 +74,7 @@ def test_stale_policy_returns_409_and_keeps_document(client: TestClient, changed
     p = propose(changed)
     assert client.post(f"/api/proposals/{p.id}/approve", json={}, headers=auth(token)).status_code == 200
     r = client.post(f"/api/policies/{fixtures.POLICY_ID}/versions", headers=auth(token), json={
-        "voluntary_return_days": 21, "effective_from": "2027-01-01", "description": "21 days."})
+        "expected_version": 2, "voluntary_return_days": 21, "effective_from": "2027-01-01", "description": "21 days."})
     assert r.status_code == 201
     r = client.post(f"/api/proposals/{p.id}/apply", headers=auth(token))
     assert r.status_code == 409 and r.json()["details"]["current_policy_version"] == 3
@@ -84,6 +84,7 @@ def test_stale_policy_returns_409_and_keeps_document(client: TestClient, changed
 def test_policy_change_endpoint(store: Store, token: str) -> None:
     c = TestClient(api.build_app(store), base_url="http://127.0.0.1:8100", client=("127.0.0.1", 1))
     body = {**fixtures.SHIFTLY_RETURNS_CHANGE,
+            "expected_version": 1,
             "effective_from": fixtures.SHIFTLY_RETURNS_CHANGE["effective_from"].isoformat()}
     assert c.post(f"/api/policies/{fixtures.POLICY_ID}/versions", json=body).status_code == 401
     r = c.post(f"/api/policies/{fixtures.POLICY_ID}/versions", json=body, headers=auth(token))

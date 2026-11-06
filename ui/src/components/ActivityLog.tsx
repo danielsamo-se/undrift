@@ -104,7 +104,7 @@ export function RunGroup({ run, freshSince, defaultOpen, anchorId }: {
   const meta = run.finish?.metadata ?? {};
   const cost = (meta.cost as { total?: string } | undefined)?.total;
   const retrieval = meta.retrieval as { complete?: boolean; missing?: string[] } | undefined;
-  const findings = results.filter((e) => e.type === "agent.classification").length;
+  const findings = results.filter((e) => e.type === "finding.recorded" && e.status === "ok").length;
   const proposals = results.filter((e) => e.type === "proposal.created").length;
   const verdictFailed = results.some((e) => e.type === "agent.verdict_received" && e.status !== "ok");
   const state = run.status === "running" ? "running" : run.status === "error" || verdictFailed ? "error" : "ok";
@@ -119,7 +119,7 @@ export function RunGroup({ run, freshSince, defaultOpen, anchorId }: {
         </time>
         <span className="run-state" aria-hidden />
         <span className="run-name">
-          {state === "running" ? "Agent run in progress" : state === "error" ? "Agent run · no usable verdict" : "Agent run"}
+          {state === "running" ? "Agent run in progress" : state === "error" ? `Agent run ${run.outcome ?? "failed"}` : "Agent run completed"}
           <code className="muted">{shortId(run.id)}</code>
         </span>
         <span className="run-facts">

@@ -1,4 +1,4 @@
-import type { ActivityEvent } from "../api/types";
+import type { ActivityEvent, RunSummary } from "../api/types";
 import { formatDate, humanizeActor } from "./format";
 
 export type EventGroup = "mcp" | "agent" | "policy" | "review" | "security" | "system";
@@ -52,7 +52,7 @@ const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
 
 export function groupOf(type: string): EventGroup {
   if (type.startsWith("mcp.")) return "mcp";
-  if (type.startsWith("agent.")) return "agent";
+  if (type.startsWith("agent.") || type.startsWith("finding.")) return "agent";
   if (type.startsWith("policy.") || type.startsWith("impact.")) return "policy";
   if (type.startsWith("proposal.") || type.startsWith("document.")) return "review";
   if (type.startsWith("auth.")) return "security";
@@ -89,7 +89,7 @@ export function describeEvent(e: ActivityEvent): EventView {
         ...base,
         tone: failed ? "danger" : "agent",
         icon: "bot",
-        title: failed ? "Agent run failed" : "Agent run finished",
+        title: failed ? `Agent run ${str(m.run_status) || "failed"}` : "Agent run completed",
         detail: [m.duration_s !== undefined ? `${str(m.duration_s)} s` : "", e.error ?? ""].filter(Boolean).join(" · "),
       };
     case "agent.verdict_received":
@@ -100,14 +100,15 @@ export function describeEvent(e: ActivityEvent): EventView {
         title: failed ? "Verdict not accepted" : `Verdict received for policy P${str(m.reported_policy_version)}`,
         detail: failed ? e.error ?? "" : "Policy version matches the current version",
       };
+    case "finding.recorded":
     case "agent.classification": {
       const agrees = m.agrees_with_scan;
       return {
         ...base,
-        tone: m.category === "OUTDATED" ? "warning" : "agent",
+        tone: failed ? "danger" : m.category === "OUTDATED" ? "warning" : "agent",
         icon: "search",
         title: `${str(e.subject_id)} classified ${CATEGORY_LABEL[str(m.category)] ?? str(m.category)}`,
-        detail:
+        detail: failed ? e.error ?? "Finding rejected" :
           agrees === true
             ? "Agrees with the deterministic prefilter"
             : agrees === false
@@ -115,6 +116,10 @@ export function describeEvent(e: ActivityEvent): EventView {
               : "",
       };
     }
+    case "finding.rejected":
+      return { ...base, tone: "danger", icon: "alert", title: "Finding rejected", detail: e.error ?? "" };
+    case "agent.retrieval":
+      return { ...base, tone: failed ? "danger" : "agent", icon: "search", title: failed ? "Retrieval failed" : "Run retrieval verified", detail: e.error ?? str(e.subject_id) };
     case "agent.reply_unparsed":
     case "agent.reply_rejected":
       return { ...base, tone: "danger", icon: "alert", title: "Agent reply not usable", detail: e.error ?? "" };
@@ -188,6 +193,7 @@ export interface RunItem {
   finish: ActivityEvent | null;
   children: ActivityEvent[];
   status: "running" | "success" | "error";
+  outcome?: string;
 }
 
 export interface EventItem {
@@ -197,48 +203,54 @@ export interface EventItem {
 
 export type TimelineItem = RunItem | EventItem;
 
-function messageId(e: ActivityEvent): string | null {
-  const prov = e.metadata.provenance as { message_id?: string } | undefined;
-  return prov?.message_id ?? null;
-}
-
 /**
  * Group events (ascending seq) into agent runs: MCP calls the server recorded between
  * run_started and run_finished, plus results carrying the run's message id.
  */
-export function buildTimeline(events: ActivityEvent[]): TimelineItem[] {
+export function buildTimeline(events: ActivityEvent[], summaries: RunSummary[] = []): TimelineItem[] {
   const items: TimelineItem[] = [];
-  const byMessage = new Map<string, RunItem>();
-  let open: RunItem | null = null;
+  const byRun = new Map<string, RunItem>();
+  const known = new Map(summaries.map((run) => [run.id, run]));
+  const runId = (e: ActivityEvent): string | null => {
+    const prov = e.metadata.provenance as { run_id?: string } | undefined;
+    return typeof e.metadata.run_id === "string" ? e.metadata.run_id : prov?.run_id ?? null;
+  };
   for (const e of events) {
-    if (e.type === "agent.run_started") {
-      open = { kind: "run", id: `run-${e.seq}`, start: e, finish: null, children: [], status: "running" };
-      items.push(open);
-      continue;
+    const rid = runId(e);
+    const summary = rid ? known.get(rid) : undefined;
+    if (rid && !byRun.has(rid) && (e.type === "agent.run_started" || summary)) {
+      // A persisted run supplies its header when its start has fallen out of the
+      // activity tail. These are view fields, never invented audit-log entries.
+      const start: ActivityEvent = e.type === "agent.run_started" ? e : {
+        ...e, seq: summary!.event_range[0], ts: summary!.started_at,
+        type: "agent.run_started", subject_type: "run", subject_id: rid,
+        metadata: { run_id: rid }, error: null, status: "ok",
+      };
+      const finish: ActivityEvent | null = summary?.finished_at ? {
+        ...start, ts: summary.finished_at, type: "agent.run_finished",
+        status: summary.status === "completed" ? "ok" : "error",
+        metadata: { run_id: rid, run_status: summary.status, cost: summary.cost,
+          retrieval: summary.retrieval, duration_s: summary.duration_s },
+      } : null;
+      const run: RunItem = { kind: "run", id: rid, start, finish, children: [],
+        status: !summary || summary.status === "open" ? "running" : summary.status === "completed" ? "success" : "error",
+        outcome: summary?.status,
+      };
+      byRun.set(rid, run);
+      items.push(run);
     }
-    if (e.type === "agent.run_finished" && open) {
-      open.finish = e;
-      open.status = e.status === "ok" ? "success" : "error";
-      const mid = typeof e.metadata.message_id === "string" ? e.metadata.message_id : null;
-      if (mid) {
-        open.id = mid;
-        byMessage.set(mid, open);
+    if (e.type !== "agent.run_started" || !rid) {
+      const run = rid ? byRun.get(rid) : undefined;
+      if (run && e.type === "agent.run_finished") {
+        run.finish = e;
+        run.outcome = String(e.metadata.run_status ?? (e.status === "ok" ? "completed" : "failed"));
+        run.status = e.status === "ok" ? "success" : "error";
+      } else if (run) {
+        run.children.push(e);
+      } else {
+        items.push({ kind: "event", event: e });
       }
-      open = null;
-      continue;
     }
-    if (open && e.type === "mcp.tool_call") {
-      open.children.push(e);
-      continue;
-    }
-    const mid = messageId(e);
-    const run = mid ? byMessage.get(mid) : undefined;
-    if (run) {
-      run.children.push(e);
-      if (e.type === "agent.verdict_received" && e.status !== "ok") run.status = "error";
-      continue;
-    }
-    items.push({ kind: "event", event: e });
   }
   return items;
 }
