@@ -8,6 +8,8 @@ import type {
   ProposalStatus,
   RunDetail,
   RunSummary,
+  Publication,
+  PublicationPlan,
 } from "./types";
 
 export class ApiError extends Error {
@@ -74,6 +76,11 @@ function authorized<T>(path: string, body: unknown): Promise<T> {
 const enc = encodeURIComponent;
 
 export const api = {
+  publication: (id: string, signal?: AbortSignal) =>
+    request<{ configured: boolean; publication: Publication | null }>(`/api/proposals/${enc(id)}/publication`, { signal }),
+  publicationPlan: (id: string) => authorized<{ plan: PublicationPlan }>(`/api/proposals/${enc(id)}/publication/plan`, {}),
+  publish: (id: string, approval_digest: string) => authorized<{ publication: Publication }>(`/api/proposals/${enc(id)}/publication/publish`, { approval_digest }),
+  refreshPublication: (id: string) => authorized<{ publication: Publication }>(`/api/proposals/${enc(id)}/publication/refresh`, {}),
   impact: (policyId: string, signal?: AbortSignal) =>
     request<ImpactSnapshot>(`/api/policies/${enc(policyId)}/impact`, { signal }),
   eventsTail: (tail: number) => request<EventsPage>(`/api/events?tail=${tail}`),

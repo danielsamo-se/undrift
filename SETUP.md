@@ -380,3 +380,14 @@ API projection and the actual TypeScript consistency function using an isolated 
 The UI calculation portion uses the portable Node 24 binary in `.tools/node`; it skips
 that portion if the binary is unavailable. It does not contact Cominty or start an
 application service. Full regression commands remain in the offline verification section.
+
+## 16. Human-approved GitHub publishing and Shiftly
+
+The standalone storefront is in `shiftly/`. Repository publishing is implemented
+in `publishing.py` and the Review Queue, using a separate SQLite publication journal.
+It is disabled until an operator configures the target and a private credential file.
+It never merges pull requests or initiates Vercel deployments directly.
+
+See [docs/PUBLISHING.md](docs/PUBLISHING.md) for isolated local verification,
+preserving existing databases, account permissions, explicit repository/deployment
+approval, and the complete human review → PR → merge → deployment → verification flow.

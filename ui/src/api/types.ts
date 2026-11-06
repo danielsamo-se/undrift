@@ -212,3 +212,36 @@ export interface ProposalDetail {
     policy_current: boolean;
   };
 }
+
+export interface Publication {
+  status: "approved" | "pr_created" | "merged" | "deployed" | "verified" | "blocked";
+  digest: string;
+  target: { repository: string; branch: string; path: string; site_url: string };
+  pr?: { number: number; url: string; commit: string };
+  merge_commit?: string;
+  error?: string | null;
+  verified_at?: string;
+  checked_at?: string;
+  verification_evidence?: {
+    source: "production_site";
+    site_url: string;
+    checked_at: string;
+    expected_merge_commit: string;
+    observed_build_commit: string;
+    approved_content_sha256: string;
+    raw_policy_sha256: string;
+    rendered_policy_sha256: string;
+    returns_page_sha256: string;
+    policy_element_count: number;
+    http_statuses: Record<string, number>;
+  };
+  events: { seq: number; ts: string; type: string; metadata: Record<string, unknown> }[];
+}
+
+export interface PublicationPlan {
+  digest: string;
+  target: Publication["target"];
+  base_commit: string;
+  original_content: string;
+  proposed_content: string;
+}

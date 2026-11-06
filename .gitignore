@@ -18,3 +18,4 @@ __pycache__/
 .tools/
 ui/node_modules/
 ui/dist/
+shiftly/dist/

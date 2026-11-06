@@ -1,0 +1,16 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "cleanUrls": true,
+  "trailingSlash": true,
+  "headers": [
+    { "source": "/(.*)", "headers": [
+      { "key": "X-Content-Type-Options", "value": "nosniff" },
+      { "key": "Referrer-Policy", "value": "no-referrer" },
+      { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'" }
+    ] },
+    { "source": "/build.json", "headers": [{ "key": "Cache-Control", "value": "no-store" }] },
+    { "source": "/content/returns.txt", "headers": [{ "key": "Cache-Control", "value": "no-store" }] },
+    { "source": "/returns/", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+  ]
+}

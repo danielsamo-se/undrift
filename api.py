@@ -60,6 +60,11 @@ class PolicyChangeBody(BaseModel):
     description: str = Field(min_length=1, max_length=4000)
 
 
+class PublishBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    approval_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 def _is_loopback_host(value: str) -> bool:
     host = value.strip().lower()
     if host.startswith("["):
@@ -133,7 +138,7 @@ def _legacy_proposal_evidence(proposal: Any, store: Store, runs_dir: Path) -> st
 
 
 def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
-              ui_dir: Path | None = UI_DIST) -> ASGIApp:
+              ui_dir: Path | None = UI_DIST, publisher=None) -> ASGIApp:
     async def health(_: Request) -> JSONResponse:
         return JSONResponse({"status": "ok", "database": store.path.name})
 
@@ -237,6 +242,37 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
                              "candidates": [{**c.__dict__, "actionable": c.actionable}
                                             for c in candidates]}, status_code=201)
 
+    async def publication(request: Request) -> JSONResponse:
+        # Credential loading and journal creation are lazy and API-only. MCP never
+        # imports the publishing module or receives its credential file contents.
+        def current():
+            nonlocal publisher
+            if publisher is None:
+                import publishing
+                publisher = publishing.configured(store)
+            return publisher
+        service = await run_in_threadpool(current)
+        pid = request.path_params['proposal_id']
+        if request.method == 'GET':
+            state = await run_in_threadpool(service.get, pid) if service else None
+            return JSONResponse({'configured': service is not None, 'publication': state})
+        # Authenticate even when the target has not yet been configured.
+        await run_in_threadpool(workflow.authorize, store, _token(request),
+                                'publishing.request', ('proposal', pid))
+        if service is None:
+            raise workflow.WorkflowError('Configure the publishing target before creating a GitHub PR')
+        action = request.path_params['action']
+        if action == 'publish':
+            body = await _body(request, PublishBody)
+            state = await run_in_threadpool(service.publish, pid, body.approval_digest, _token(request))
+            return JSONResponse({'publication': state})
+        await _body(request, EmptyBody)
+        if action == 'plan':
+            return JSONResponse({'plan': await run_in_threadpool(service.plan, pid, _token(request))})
+        if action == 'refresh':
+            return JSONResponse({'publication': await run_in_threadpool(service.refresh, pid, _token(request))})
+        raise workflow.NotFound('Unknown publication action')
+
     def review(action: str):
         async def handler(request: Request) -> JSONResponse:
             pid = request.path_params["proposal_id"]
@@ -271,6 +307,8 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
             Route("/api/proposals/{proposal_id}/approve", review("approve"), methods=["POST"]),
             Route("/api/proposals/{proposal_id}/reject", review("reject"), methods=["POST"]),
             Route("/api/proposals/{proposal_id}/apply", review("apply"), methods=["POST"]),
+            Route("/api/proposals/{proposal_id}/publication", publication),
+            Route("/api/proposals/{proposal_id}/publication/{action}", publication, methods=["POST"]),
             *([Mount("/", StaticFiles(directory=ui_dir, html=True))]
               if ui_dir is not None and (ui_dir / "index.html").is_file() else []),
         ],

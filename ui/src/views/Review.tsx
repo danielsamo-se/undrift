@@ -5,6 +5,7 @@ import type { ImpactDocument, ImpactSnapshot, Proposal, ProposalDetail, Proposal
 import { LogRow } from "../components/ActivityLog";
 import { DiffView } from "../components/DiffView";
 import { ReviewDecision } from "../components/ReviewDecision";
+import { PublishingDecision } from "../components/PublishingDecision";
 import { CopyText, DocVersion, EmptyState, ErrorState, LoadingBlock, PolicyVersion, ProposalState } from "../components/ui";
 import { useImpact, useProposals } from "../lib/data";
 import { formatDate, formatDateTime, humanizeActor, relativeTime, shortId } from "../lib/format";
@@ -127,6 +128,7 @@ function ProposalBody({ detail, snap, doc, onChanged }: {
         </header>
         <DiffView before={p.original_content} after={p.proposed_content} unified={p.diff} baseVersion={p.base_version} documentId={p.document_id} />
         <ReviewDecision detail={detail} onChanged={onChanged} />
+        <PublishingDecision detail={detail} />
       </section>
 
       <aside className="review-side" aria-label="Context">

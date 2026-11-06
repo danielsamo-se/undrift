@@ -1,0 +1,7 @@
+{
+  "name": "shiftly-storefront",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": { "build": "node build.mjs", "preview": "node preview.mjs", "test": "node --test build.test.mjs" },
+  "engines": { "node": ">=22" }
+}
