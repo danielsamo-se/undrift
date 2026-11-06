@@ -11,6 +11,7 @@ import type {
   Publication,
   PublicationPlan,
   Conversation,
+  ReliabilityReport,
 } from "./types";
 
 export class ApiError extends Error {
@@ -77,6 +78,7 @@ function authorized<T>(path: string, body: unknown): Promise<T> {
 const enc = encodeURIComponent;
 
 export const api = {
+  reliability: (signal?: AbortSignal) => request<ReliabilityReport>('/api/reliability', { signal }),
   conversations: (signal?: AbortSignal) => request<{ conversations: Conversation[] }>('/api/conversations', { signal }),
   answerQuestion: (id: string, body: { option: number } | { text: string }) =>
     authorized<{ question_id: string; status: string }>(`/api/questions/${enc(id)}/answer`, body),

@@ -149,6 +149,10 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
     async def health(_: Request) -> JSONResponse:
         return JSONResponse({"status": "ok", "database": store.path.name})
 
+    async def reliability_report(_: Request) -> JSONResponse:
+        import reliability
+        return JSONResponse(await run_in_threadpool(reliability.load_report, os.environ.get('UNDRIFT_RELIABILITY_REPORT')))
+
     async def events(request: Request) -> JSONResponse:
         await run_in_threadpool(store.reap_runs)
         q = request.query_params
@@ -311,6 +315,7 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
     app = Starlette(
         routes=[
             Route("/api/health", health),
+            Route('/api/reliability', reliability_report),
             Route("/api/events", events),
             Route("/api/documents", documents),
             Route("/api/policies/{policy_id}", policy),

@@ -7,6 +7,29 @@ export type Category =
 
 export type ProposalStatus = "pending_review" | "approved" | "rejected" | "applied";
 
+export interface EvaluationRun {
+  slot: number; root_run_id: string; thread_id: string; status: string; reconciled: boolean; evidence_kind: string;
+  database: string; database_id: string; phase_run_ids: string[]; message_ids: string[]; message_count: number;
+  metrics: Record<string, number | null>; observed_unreconciled_metrics: Record<string, number | null> | null;
+  native_question_count: number; answered_count: number; native_question_integrity: boolean;
+  protected_automation_safe: boolean; mcp_calls: Record<string, number>; mcp_error_count: number;
+  search_queries: string[]; reported_cost: string | null; duration_s: number;
+  reserved_parent_steps: number; observed_llm_rounds: number; proposal_count: number;
+  errors: string[]; misclassified_document_ids: string[]; final_retrieval_complete: boolean;
+}
+export interface EvaluationStatistic {
+  minimum: number | null; mean: number | null; maximum: number | null; defined_count: number; result_count: number;
+}
+export interface ReliabilityReport {
+  version: string; state: string; stop_reason?: string | null; evidence_kind?: string;
+  protocol_sha256?: string; cumulative_reported_cost?: string; protected_historical_files_unchanged?: boolean;
+  results: EvaluationRun[];
+  aggregate: { planned_conversations: number; recorded_conversations: number; not_started: number;
+    reconciled_conversations: number; message_count: number; reported_total_cost: string;
+    statistics: Record<string, EvaluationStatistic>;
+    cost_statistics?: { minimum: string | null; mean: string | null; maximum: string | null; defined_count: number } };
+}
+
 export interface Policy {
   id: string;
   version: number;

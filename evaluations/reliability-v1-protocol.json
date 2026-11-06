@@ -1,0 +1,69 @@
+{
+  "version": "reliability-v1",
+  "frozen_at": "2026-11-06T22:47:19.137305+00:00",
+  "remote": {
+    "instructions_normalized_sha256": "ed03b7f22724bab6ec7a900952bdc05547d22694c0de73a1dc01811a8c9ba787",
+    "agent_id": "-cS4pr7oTPO4",
+    "models": [
+      {
+        "id": "CqMYxVBlPnPf",
+        "name": "Claude Sonnet 5.5 (High)"
+      }
+    ],
+    "capabilities_sha256": "f916301bbd55fb1c611847b426ac1dec972ef105ea176038f7668356cb536236",
+    "connection": "undrift_mcp_ngrok",
+    "public_host": "chatter-poker-theorize.ngrok-free.dev",
+    "integration_enabled": true,
+    "tools_sha256": "a9a9be935703610a1f1f0b2b29524f42364109c9f681297bef889950d0fdaf27",
+    "tools": [
+      "get_document",
+      "get_policy",
+      "health_check",
+      "list_channels",
+      "record_finding",
+      "search_documents",
+      "similar_documents"
+    ]
+  },
+  "instructions_raw_sha256": "3a88c83ef6ab273767cfd0567e6ccd5b4f33f4f049b388d158c1a4093c437d3c",
+  "corpus_sha256": "81012f6efaae8bca2ef12a2b179ac1cd9aa1c131be49c606e3e92c4b4384b8b0",
+  "seed_sha256": "81012f6efaae8bca2ef12a2b179ac1cd9aa1c131be49c606e3e92c4b4384b8b0",
+  "rubric_sha256": "cdad4a5ea6835807f8a7b53cc23641e711bea7e667c4706d749b8c4930d43f0c",
+  "answer_fixture_version": "unavailable-facts-v1",
+  "answer_fixture_sha256": "a837006e8f0e28a1d4fb2eb8e5face5fbda1644a2328828ecd38722df72b299c",
+  "source_sha256": {
+    "run_impact.py": "6e79b00c1566fd74e9625fa377eb202ab260d6a11613d0ee80a5985cab830867",
+    "workflow.py": "69d5009fa6bfb4087254b147c0cb5eb530b9b991327db362008a87ff744ab216",
+    "clarification.py": "bda56870937f2da4621d333e28b4c20d4d5e332644aaeaf9960263561baa96e3",
+    "clarification_schema.py": "10ab6cbbcd9ee1af3051dc57725a2a7137fdd0b7628ddb7bfaed5d84b2577deb",
+    "discovery.py": "d04ca5f86048896f44353a6f4a42f72870ca36a5cdcd18e938263aa2270c1bab",
+    "discovery_seed.py": "2a4ffdb3fcd52893418b19a92a67ca4c026c58405bd3f627d4224d2de95fd043",
+    "store.py": "7dcf8e0d712b1247ea82db0fb865ccff846923d45470f50313a9becd907670a2",
+    "models.py": "acdb1ae673cebeee9973512f5cb2ddaa931238fc2410e5c6d0afa608b3c9db6b",
+    "fixtures.py": "06c76c275814f51ba766f3330223585907b1d54479469a758024aebceddcb290",
+    "server.py": "e7fca9b5c7a62a834a255c36d0eead6d16ce05eb701e64b06c71c9e7786aa1cc",
+    "config.py": "f04c9e62e884ec0d4f27cc207a4553586e3206f371cdc222ab0c2c737635969e",
+    "reliability.py": "eb4dcdf2c36085cf60fff45368f7e27d429d071f553a0be66266a86104745929",
+    "scripts/reliability_evaluation.py": "187bc9bba7881f4a8c8b050edaddace7bf17f479a65ff7aac6ada5538a106997",
+    "scripts/evaluate_clarification.py": "70d71144d02f2f8a9fca2aa5cd23366f02c90ccc7cc221988840712b8c8ea898",
+    "scripts/evaluation_service.py": "1809d1184baa8b2fcf880ad1756b3702772df671f7484ebddda813191811f181",
+    "scripts/evaluation_services.ps1": "097d4ec7f85ece1f45755b4595f656048a6afa5b63ae1776a4aeeb30a1459b7a"
+  },
+  "conversations": 5,
+  "max_continuations_per_conversation": 1,
+  "max_paid_messages": 10,
+  "initial_max_steps": 40,
+  "continuation_max_steps": 20,
+  "search_calls_max": 12,
+  "similarity_calls_max": 4,
+  "reported_cost_stop": "5",
+  "paraphrase_documents": [
+    "web-003",
+    "bot-001"
+  ],
+  "scoring": "Reconciled labels only; missing labels count as misses. Native question recall is separate.",
+  "undefined_precision": "null; aggregates display defined_count and never invent precision for empty predictions.",
+  "continuation_policy": "Only for actual native questions, with the private fixed factual answers; no third turn.",
+  "sdk_version": "1.2.0",
+  "steps_measurement": "Reserved parent allowance plus unique llm correlation IDs; no exact consumed-step API."
+}

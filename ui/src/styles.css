@@ -1,6 +1,20 @@
 /* Undrift: restrained, information-dense operations UI.
    Colour carries meaning only: status semantics, one accent for selection and focus. */
 
+.reliability-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:16px; margin:20px 0; }
+.reliability-summary > div { border:1px solid var(--line); border-radius:8px; padding:16px; display:grid; gap:6px; }
+.reliability-summary strong { font-size:24px; font-weight:500; }
+.reliability-summary span { color:var(--ink-3); font-size:12px; }
+.reliability-table { overflow-x:auto; margin:24px 0; border:1px solid var(--line); border-radius:8px; }
+.reliability-table table { width:100%; border-collapse:collapse; font-size:12px; text-align:left; }
+.reliability-table caption { text-align:left; padding:14px; font-size:14px; font-weight:500; }
+.reliability-table th, .reliability-table td { padding:10px 14px; border-top:1px solid var(--line); vertical-align:top; }
+.reliability-table th { font-weight:500; }
+.reliability-detail { padding:14px; border:1px solid var(--line); border-radius:8px; margin:10px 0; }
+.reliability-detail summary { cursor:pointer; }
+.reliability-detail dl { display:grid; grid-template-columns:180px minmax(0,1fr); gap:10px; margin-top:16px; font-size:12px; }
+.reliability-detail dd { margin:0; overflow-wrap:anywhere; }
+
 :root {
   --font: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", Consolas, monospace;

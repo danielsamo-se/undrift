@@ -1,4 +1,4 @@
-import { Activity, GitPullRequest, LayoutGrid, Waypoints } from "lucide-react";
+import { Activity, GitPullRequest, LayoutGrid, Waypoints, ShieldCheck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect } from "react";
 import { ReviewerControl } from "./components/ReviewerSession";
@@ -10,12 +10,14 @@ import { ActivityView } from "./views/Activity";
 import { ImpactView } from "./views/Impact";
 import { OverviewView } from "./views/Overview";
 import { ReviewView } from "./views/Review";
+import { ReliabilityView } from './views/Reliability';
 
 const NAV: { view: View; label: string; icon: LucideIcon; key: string }[] = [
   { view: "overview", label: "Overview", icon: LayoutGrid, key: "1" },
   { view: "impact", label: "Impact map", icon: Waypoints, key: "2" },
   { view: "review", label: "Review", icon: GitPullRequest, key: "3" },
   { view: "activity", label: "Activity", icon: Activity, key: "4" },
+  { view: 'reliability', label: 'Reliability', icon: ShieldCheck, key: '5' },
 ];
 
 export function Mark({ size = 20 }: { size?: number }) {
@@ -96,6 +98,7 @@ function Shell() {
         {route.view === "impact" && <ImpactView selectedId={route.param} />}
         {route.view === "review" && <ReviewView selectedId={route.param} />}
         {route.view === "activity" && <ActivityView focusRun={route.param} />}
+        {route.view === 'reliability' && <ReliabilityView />}
       </main>
     </div>
   );
