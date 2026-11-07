@@ -15,3 +15,7 @@ External Shiftly storefront commits, GitHub PR identities, Sites source/version 
 Follow [SETUP.md](../SETUP.md) for backend and UI dependencies. Real credentials, databases, raw execution logs, private answer fixtures and local deployment packages are excluded. The committed `.env.example` contains no usable credentials. The evaluation ground-truth file under `tests/data/` is intentional reproducibility material; it is not exposed through agent MCP tools.
 
 The [public jury demo](https://undrift-jury-demo.equalglass4.chatgpt.site) is a read-only historical replay. Rebuilding the operator application does not recreate private execution archives or deploy the jury snapshot. Source references to ignored local packages identify retained private artifacts, not downloadable repository contents.
+
+## v4 update
+
+Four subsequent development milestones (`0ae86c1`, `d3e24e1`, `a9e3a5c`, `ee2b163`) were transferred as reviewed source patches on top of the existing public history, each in its own noreply-authored commit. No original private commit objects or refs were imported. A separate release commit records the verified Sites v4 deployment and updates release-status documentation. The original development repository remains unchanged.

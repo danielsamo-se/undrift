@@ -1,6 +1,6 @@
 # Live Cominty demonstrations (7 November 2026)
 
-Sanitized evidence: `evaluations/live-demos-2026-11-07.json`. Each demonstration was one explicitly authorized paid execution with no retry. Neither is on the public jury site, which still serves v3 and was not redeployed.
+Sanitized evidence: `evaluations/live-demos-2026-11-07.json`. Each demonstration was one explicitly authorized paid execution with no retry. Both are now included in the publicly verified v4 jury replay. They remain historical, read-only evidence; publishing the replay did not run either agent again.
 
 ## 1. Real Guard BLOCK
 

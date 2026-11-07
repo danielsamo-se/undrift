@@ -53,9 +53,7 @@ Use a 1440-pixel-wide window at 100% zoom with no other tabs. Every shot starts 
 
 ## Remaining owner decisions
 
-v3 is live with 12 archives. A v4 candidate (13 archives: the Guard BLOCK, the failed delegated run and the execution timeline) is prepared and verified locally. See `docs/PUBLIC_DEMO.md` and `deployment/jury/release-v4-prepared.json`.
+Sites v4 is deployed and publicly verified with 13 archives, both real Guard verdicts, the failed delegated run and the execution timeline. See `docs/PUBLIC_DEMO.md` and `deployment/jury/deployment.json`. The four new milestones are transferred through the privacy-safe publication process.
 
-1. **Optionally deploy v4** through Codex Sites, following the handoff in `docs/PUBLIC_DEMO.md`. Version 3 stays as the rollback.
-2. **Record** the demonstration using the plan above.
-3. **Publish the new local commits** to the public repository through the same privacy-safe process, if wanted.
-4. **Submit** the description and video.
+1. **Record** the demonstration using the plan above.
+2. **Submit** the description and video.
