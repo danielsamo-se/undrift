@@ -8,6 +8,45 @@ It has no dependency on the laptop, ngrok, local API services, Cominty availabil
 or GitHub credentials. The operational Python application and local reviewer flow
 remain unchanged and separate.
 
+## Release v4 (prepared, not deployed)
+
+The public site still serves v3. A v4 candidate is built and verified **locally only**; publishing needs the owner's approval and the authenticated Codex Sites workflow. Its record is `deployment/jury/release-v4-prepared.json`.
+
+| | |
+|---|---|
+| Snapshot | `5341fcca1bc0da916563350862d40de901d55be2a39532f643c61b54628b47b9` |
+| Worker SHA-256 | `a554f246d1914ec82eb5eebae608a17f9e4f9f3ea916ed86b83cd38ee01b2b41` (about 1.15 MB compressed) |
+| Archives | 13 |
+| Worker code | Unchanged from v3; same Sites project and `hosting.json` |
+
+What v4 adds:
+- **Byte-identical datasets:** 11 of the 12 v3 datasets are copied unchanged. No history is regenerated.
+- **`guard`, re-captured:** it now holds both real Cominty Guard verdicts, the ALLOW `gchk-79d5…` and the BLOCK `gchk-5ce8…`. The precheck had returned CLEAR on the BLOCK. Memory and Slack metadata are reused from the v3 capture, so no network call was made.
+- **`autonomy-live`, new:** the real delegated Impact run `run-84e7…`. It failed the search-first contract, so the server rejected it and nothing was proposed or applied.
+- **UI:**
+  - the execution timeline;
+  - the Guard ALLOW vs BLOCK comparison;
+  - archive hints in place of load errors on Guard and Memory;
+  - a 10-step jury guide;
+  - honest autonomy evidence links.
+
+Local verification (`.tools/verify_jury_v4.py`) passed:
+- all 13 database identities, both Guard verdicts and the failed autonomy run;
+- 44 write attempts denied with 403, and private paths returning 404;
+- 14 browser routes, including the timeline and the BLOCK;
+- preservation. The only changes since the v3 baseline are the disclosed `.env` line, two reliability-v2 runtime attestation files, and one appended `server.started` event in `evaluation-05.db`; every other table is byte-identical.
+
+The 117-page archive × view QA matrix and 33 interactive flows (`.tools/qa/`) found no errors.
+
+**Codex handoff (only after approval):**
+1. **Copy the package.** Copy `.tools/jury-site-v4/` into the registered Site checkout `.tools/jury-site`: `dist/`, `worker.mjs`, `replay.json`, `PUBLIC-REPLAY.json` and `package.json`. Keep `.openai/hosting.json`. Commit it as a new source version, and do not rebuild or re-export.
+2. **Save and deploy.** Save a new Sites version and deploy exactly that version. Version 3 remains the rollback.
+3. **Check the snapshot.** The public `/api/demo` must report snapshot `5341fcca…` with 13 archives.
+4. **Verify.** Stop the local preview on :8602, then run `.venv\Scripts\python.exe -B .tools\verify_jury_v4.py https://undrift-jury-demo.equalglass4.chatgpt.site`.
+5. **Record the result.** Record the saved version ID in a new `deployment/jury/deployment.json` revision, keeping v3's record under `releases/`.
+
+To rebuild the candidate locally, run `sh .tools/rebuild_jury_v4.sh`. It recreates only the UI and package from the frozen `.tools/jury-replay-v4.json`. To preview it, run `.tools\node\node.exe .tools\jury-preview-v4.mjs`, which serves http://127.0.0.1:8602.
+
 ## Release v3 (deployed and verified)
 
 The live site serves **Sites version 3**, published through the authenticated Codex Sites workflow on 7 November 2026. `deployment/jury/deployment.json` binds its saved version ID, source commit, exact Worker bytes and public snapshot. The prepared release record remains unchanged at `deployment/jury/release-v3-prepared.json`.

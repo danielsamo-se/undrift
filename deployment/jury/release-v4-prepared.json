@@ -1,0 +1,89 @@
+{
+  "status": "prepared_not_deployed",
+  "live_version_unchanged": 3,
+  "project_id": "appgprj_6aeeeefd422881919acadfc0e3ff7f1f",
+  "snapshot_id": "5341fcca1bc0da916563350862d40de901d55be2a39532f643c61b54628b47b9",
+  "worker_sha256": "a554f246d1914ec82eb5eebae608a17f9e4f9f3ea916ed86b83cd38ee01b2b41",
+  "module_bytes": 4098178,
+  "gzip_bytes": 1153786,
+  "archives": 13,
+  "source_databases": [
+    "b00e1c9afd9c4f188b2f225bc895b2bf",
+    "b63987b2714c48f38bc8b8de6664d18c",
+    "7fca0630671440ed936569c0e77c9c4a",
+    "3afdc367a5384356a685c790303f2f83",
+    "b4476b3881fd40daa5038bcf8c33d3f4",
+    "8dc2d31c35a1455daa0165899d154cf0",
+    "831461e7d45e47429bf5d1da42c4a899",
+    "a2fd8cc4ae444492bdfa70bb674f7e59",
+    "f6ce612fc16b42b48aeccf750162ae2f",
+    "47563f9dd68847a8866a746a1dbabfb1",
+    "d1f1ca2ef34940d29e341889c797eb1f",
+    "f5f087fb0e984ad98f3bc0421a55703e",
+    "fd569ecf81d64b83a7205206c86e0b0a"
+  ],
+  "mode": "historical_readonly",
+  "runtime_secrets": 0,
+  "mcp_server": false,
+  "write_routes": 0,
+  "worker_code_changed": false,
+  "changes_from_v3": {
+    "datasets_byte_identical_to_v3": [
+      "discovery",
+      "clarification",
+      "publishing",
+      "evaluation-1",
+      "evaluation-2",
+      "evaluation-3",
+      "evaluation-4",
+      "evaluation-5",
+      "reliability-v1",
+      "autonomy",
+      "autonomy-fixture"
+    ],
+    "guard": "re-captured from guard-demo-v1.db: adds the real Cominty Guard BLOCK gchk-5ce8448d76f85805 next to ALLOW gchk-79d5098f2affc413; Memory/Slack metadata reused from the v3 capture (no network call)",
+    "autonomy-live": "new archive: real delegated Cominty run run-84e73977cab0191d that failed the search-first contract; no proposal or application",
+    "ui": [
+      "execution timeline view",
+      "Guard ALLOW vs BLOCK comparison",
+      "archive hints instead of load errors",
+      "10-step jury guide",
+      "honest autonomy evidence links"
+    ]
+  },
+  "local_verification": {
+    "database_identities": 13,
+    "writes_denied": 44,
+    "guard_live_check": true,
+    "memory_metadata_only": true,
+    "slack_not_connected": true,
+    "autonomy_config": true,
+    "private_paths_404": true,
+    "preserved_historical_files": 98,
+    "evaluation_05_only_server_started_appended": true
+  },
+  "browser_routes_verified": [
+    "reliability",
+    "guide",
+    "guide-mobile",
+    "impact",
+    "review",
+    "autonomy",
+    "fixture",
+    "guard",
+    "memory",
+    "activity",
+    "guard-block",
+    "execution",
+    "execution-live",
+    "autonomy-honesty"
+  ],
+  "known_changes_since_v3_baseline": [
+    ".env",
+    ".tools\\reliability-v2\\api-runtime.json",
+    ".tools\\reliability-v2\\mcp-runtime.json",
+    "data\\reliability-v2\\evaluation-05.db"
+  ],
+  "package": ".tools/jury-site-v4 (git-ignored); export .tools/jury-replay-v4.json",
+  "handoff": "docs/PUBLIC_DEMO.md#release-v4-prepared-not-deployed"
+}

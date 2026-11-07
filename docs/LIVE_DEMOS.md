@@ -14,7 +14,13 @@ Sanitized evidence: `evaluations/live-demos-2026-11-07.json`. Each demonstration
 
 This is the first Guard verdict that only the agent could reach: no deterministic rule fired. The service was put back in non-paid mode right after the check.
 
-The precheck does not recognise spelled-out week or month durations. A wrong ALLOW on this candidate would therefore have been release-eligible. Hardening the precheck so that such durations escalate to NEEDS_REVIEW is a possible follow-up; it is not implemented.
+At the time of this check, the precheck did not recognise spelled-out week or month durations. A wrong ALLOW on this candidate would therefore have been release-eligible.
+
+That gap is now closed in `d3e24e1`. Periods in weeks, months or years escalate:
+- to NEEDS_REVIEW (`period_not_in_days`);
+- to BLOCK when they equal a superseded period, for example "two months".
+
+The rule can only escalate. The same candidate would now get precheck NEEDS_REVIEW, so a wrong ALLOW can never release it, while a correct BLOCK still comes from `cominty_guard`. The recorded check keeps its original precheck result (CLEAR), which is what the UI shows.
 
 ## 2. Real Help Center autonomy attempt
 

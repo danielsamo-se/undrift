@@ -17,8 +17,9 @@ The demo scenario is Shiftly, a fictional storefront. It shortens voluntary retu
 | Review | Each correction is an **exact patch** with a diff, the verbatim original evidence and the policy version it is based on. The server re-validates document version, policy version and guardrails before anything changes. | Persisted audit trail |
 | Autonomy | Every channel has its own **server-enforced** mode: `manual_only` (legal, CRM), `review_required`, `pull_request` (website) or `bounded_auto` (at most N verified changes per run, with receipts). | Recorded delegation and audit |
 | Publish | An approved website patch becomes a **GitHub pull request**. A human merges it, Vercel deploys, and Undrift **verifies production** serves exactly the approved bytes. | [PR #1](https://github.com/danielsamo-se/shiftly-storefront/pull/1), commit `c391b36`, [live page](https://shiftly-storefront.vercel.app/returns/) |
-| Guard | A **separate Cominty Managed Agent with no tools** validates outgoing replies against strict versioned contracts. The server checks every binding and fails closed. | One live ALLOW, server-verified |
+| Guard | A **separate Cominty Managed Agent with no tools** validates outgoing replies against strict versioned contracts. The server checks every binding and fails closed. A deterministic precheck can only escalate. | Two live checks, server-verified: an ALLOW, and a BLOCK of “eight weeks” (56 days) that no rule caught at the time |
 | Memory | Verified interpretations are stored in **native Cominty Memory**, bound to the policy version. They are recalled later but can never decide or release anything. | File read back independently from Cominty |
+| Inspect | An **execution timeline** rebuilds each run from the audit log: MCP searches, retrievals, findings, native questions, server validation, proposals and decisions. Each step is labelled agent, backend rule, human, scripted input or fixture. | Persisted events and Cominty run records |
 | Evaluate | A frozen **five-trial reliability study**, failures included. | `evaluations/reliability-v2-*` |
 
 ## Architecture
@@ -97,8 +98,8 @@ The jury site is a read-only Cloudflare Worker. It serves immutable projections 
 
 **Limitations of the public demo:**
 - No agent runs from the public site.
-- Automatic channel application is shown with a clearly labelled local fixture.
-- The Guard agent has one recorded live check.
+- Automatic channel application is shown with a clearly labelled local fixture. A real delegated Cominty attempt failed the search contract and changed nothing (`docs/LIVE_DEMOS.md`).
+- The live site (v3) shows one Guard check; the prepared v4 adds the recorded BLOCK.
 - The stored Cominty Memory file contains a known redaction defect, so only its verified metadata is shown.
 
 ## Security model
