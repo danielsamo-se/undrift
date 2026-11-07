@@ -44,7 +44,7 @@ export function blockerText(code: string): string {
   return BLOCKER_LABELS[code] ?? code.replaceAll('_', ' ');
 }
 
-function ChannelPolicy({ policy: p, readonly, onChanged }: { policy: AutonomyPolicy; readonly: boolean; onChanged: () => void }) {
+export function ChannelPolicy({ policy: p, readonly, onChanged }: { policy: AutonomyPolicy; readonly: boolean; onChanged: () => void }) {
   const session = useReviewerSession();
   // Pin the editing base. A live reload must never authorize an old draft with a new revision.
   const [base, setBase] = useState(p.version);
@@ -65,7 +65,7 @@ function ChannelPolicy({ policy: p, readonly, onChanged }: { policy: AutonomyPol
   }
   return <section className="autonomy-channel" aria-label={p.name}>
     <header><h2>{p.name}</h2><strong>{MODE_LABELS[p.effective_mode]}</strong></header>
-    <p className="muted small">{p.schema_available ? `Delegation revision ${p.version}${p.persisted ? ` · set by ${p.updated_by}` : ' · conservative default'}` : 'No recorded delegation in this archive; current conservative defaults shown.'}</p>
+    <p className="muted small">{p.schema_available ? `Delegation revision ${p.version}${p.persisted ? ` · set by ${p.updated_by}` : ' · conservative default'}` : (readonly ? 'No recorded delegation in this archive; current conservative defaults shown.' : 'Autonomy not enabled for this database; conservative default applies.')}</p>
     {p.effective_mode === 'pull_request' && <p>Exact reviewed patch only. A human creates the PR and merges it in GitHub. No local application or automatic deployment authorization.</p>}
     {p.effective_mode === 'manual_only' && <p>Agent findings remain visible. Undrift cannot generate or apply corrections in this channel.</p>}
     {p.allowed_modes.includes('bounded_auto') && <p>Optional delegation permits one simple, verified return-window sentence correction at a time in the local document store. Exceptions, commitments and unresolved facts require review.</p>}

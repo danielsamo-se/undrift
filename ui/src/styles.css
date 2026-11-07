@@ -2903,3 +2903,12 @@ ins {
   font-size: 10.5px;
   line-height: 16px;
 }
+
+.note.autonomy-decision,
+.autonomy-page .note {
+  display: block;
+}
+
+.autonomy-decision p {
+  margin-top: 4px;
+}

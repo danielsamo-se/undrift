@@ -8,7 +8,7 @@ import { ReviewDecision } from "../components/ReviewDecision";
 import { PublishingDecision } from "../components/PublishingDecision";
 import { CopyText, DocVersion, EmptyState, ErrorState, LoadingBlock, PolicyVersion, ProposalState } from "../components/ui";
 import { useImpact, useProposals } from "../lib/data";
-import { formatDate, formatDateTime, humanizeActor, relativeTime, shortId } from "../lib/format";
+import { formatDate, formatDateTime, proposedBy, relativeTime, shortId } from "../lib/format";
 import { navigate, useNow, useResource } from "../lib/hooks";
 import { useLive } from "../lib/live";
 
@@ -122,7 +122,7 @@ function ProposalBody({ detail, snap, doc, onChanged }: {
             {channel?.name ?? doc?.channel} · <code>{p.document_id}</code> · <DocVersion version={p.base_version} /> →{" "}
             {p.applied_version ? <DocVersion version={p.applied_version} /> : <span className="muted">next version on apply</span>} ·{" "}
             <PolicyVersion version={p.policy_version} current={checks.policy_current} /> ·{" "}
-            {p.created_by.startsWith("agent:") ? "proposed by Cominty agent" : `proposed by ${humanizeActor(p.created_by)}`}{" "}
+            {proposedBy(p.created_by)}{" "}
             <span title={formatDateTime(p.created_at)}>{relativeTime(p.created_at, now)}</span>
           </p>
         </header>

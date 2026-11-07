@@ -61,6 +61,11 @@ export function humanizeActor(actor: string): string {
   return actor.charAt(0).toUpperCase() + actor.slice(1);
 }
 
+/** Only real Cominty agent actors are labelled as such; fixtures and humans keep their own identity. */
+export function proposedBy(createdBy: string): string {
+  return createdBy.startsWith("agent:cominty:") ? "proposed by Cominty agent" : `proposed by ${humanizeActor(createdBy)}`;
+}
+
 export function plural(n: number, word: string, pluralWord = `${word}s`): string {
   return `${n} ${n === 1 ? word : pluralWord}`;
 }
