@@ -44,8 +44,11 @@ def build(ui, bundle, site):
     (site/'worker.mjs').write_text(source,encoding='utf-8')
     (site/'replay.json').write_text(json.dumps(data,ensure_ascii=False,separators=(',',':')),encoding='utf-8')
     (site/'package.json').write_text(json.dumps({'name':'undrift-jury-demo','private':True,'type':'module'},indent=2))
-    manifest={'snapshot_id':data['snapshot_id'],'assets':len(assets),'module_bytes':len(module.encode()),
-              'gzip_bytes':compressed,'worker_sha256':hashlib.sha256(module.encode()).hexdigest(),
+    # Hash the actual bytes, including the host's newline convention, rather than
+    # the pre-write string. The saved deployment archive must match this record.
+    written=(site/'dist/server/index.js').read_bytes()
+    manifest={'snapshot_id':data['snapshot_id'],'assets':len(assets),'module_bytes':len(written),
+              'gzip_bytes':len(gzip.compress(written)),'worker_sha256':hashlib.sha256(written).hexdigest(),
               'mode':data['mode'],'source_databases':[v['database_id'] for v in data['catalog']]}
     (site/'PUBLIC-REPLAY.json').write_text(json.dumps(manifest,indent=2))
     return manifest

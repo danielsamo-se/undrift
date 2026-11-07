@@ -114,6 +114,10 @@ The deployment record in `deployment/jury/deployment.json` binds the saved Site
 version, source commit, Worker hash and public snapshot identity. Raw exported
 projections and deployment archives remain under ignored `.tools/`; sanitized cloud
 artifacts are stored by the isolated Site source/version system.
+The Worker digest is computed from the exact file bytes after writing, including
+Windows newline handling, and checked against the saved archive. The first two
+deployment versions have identical application archive bytes and snapshot identity;
+the second corrects the source build record. No historical evidence was changed.
 
 ## Verification and limits
 

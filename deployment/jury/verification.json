@@ -47,12 +47,14 @@
   "anonymous": true,
   "local_preview_stopped": true,
   "tests": {
-    "backend_passed": 391,
+    "backend_passed": 393,
     "frontend_passed": 64,
     "worker_security_passed": 5,
     "typescript": "passed",
     "production_build": "passed"
   },
   "existing_services_unchanged": 6,
-  "paid_cominty_executions": 0
+  "paid_cominty_executions": 0,
+  "immutable_across_two_deployments": true,
+  "exact_archived_worker_hash_verified": true
 }

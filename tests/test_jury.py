@@ -8,6 +8,7 @@ from discovery_seed import create_demo
 import jury
 import readmodel
 import workflow
+from scripts import build_jury_site
 
 
 def test_archive_projection_never_migrates_reaps_or_changes_source(tmp_path,monkeypatch):
@@ -49,3 +50,27 @@ def test_snapshot_uses_existing_consistency_projection_not_invented_findings(tmp
     assert len(snapshot['documents'])==24 and len(snapshot['channels'])==7
     assert all(d['finding'] is None for d in snapshot['documents'])
     assert snapshot['policy']==readmodel.impact_snapshot(source,'shiftly-returns')['policy']
+
+
+def test_deployment_manifest_hashes_exact_written_worker_bytes(tmp_path,monkeypatch):
+    monkeypatch.setattr(build_jury_site,'ROOT',tmp_path)
+    ui=tmp_path/'.test-tmp/ui';ui.mkdir(parents=True);(ui/'index.html').write_text('<h1>Jury</h1>')
+    site=tmp_path/'.tools/site';(site/'.openai').mkdir(parents=True)
+    (site/'.openai/hosting.json').write_text('{"project_id":"isolated-test"}')
+    template=tmp_path/'deployment/jury/worker.mjs';template.parent.mkdir(parents=True)
+    template.write_text('export function createWorker(){\nreturn {};\n}\n')
+    bundle=tmp_path/'bundle.json';bundle.write_text(json.dumps({'mode':'historical_readonly','snapshot_id':'test',
+        'catalog':[{'id':'history','database_id':'original'}]}))
+    manifest=build_jury_site.build(ui,bundle,site)
+    actual=(site/'dist/server/index.js').read_bytes()
+    assert manifest['worker_sha256']==hashlib.sha256(actual).hexdigest()
+    assert manifest['module_bytes']==len(actual)
+
+
+def test_jury_packager_refuses_unreviewed_live_payload(tmp_path,monkeypatch):
+    monkeypatch.setattr(build_jury_site,'ROOT',tmp_path)
+    ui=tmp_path/'.test-tmp/ui';ui.mkdir(parents=True)
+    site=tmp_path/'.tools/site';(site/'.openai').mkdir(parents=True)
+    (site/'.openai/hosting.json').write_text('{"project_id":"isolated-test"}')
+    bundle=tmp_path/'live.json';bundle.write_text('{"mode":"live","catalog":[{}]}')
+    with pytest.raises(ValueError,match='historical replay export'):build_jury_site.build(ui,bundle,site)
