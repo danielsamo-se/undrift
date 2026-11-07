@@ -138,3 +138,5 @@ ui/                    React 19 + TypeScript operator and jury interface
 shiftly/               the fictional storefront that receives the PR
 deployment/jury/       read-only public Worker and deployment record
 ```
+
+Public-history provenance and privacy notes: [PUBLICATION.md](docs/PUBLICATION.md).

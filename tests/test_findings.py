@@ -332,7 +332,8 @@ def test_mcp_findings_schema_and_authenticated_roundtrip(changed, findings_tool)
 
 def test_transactional_v1_migration_preserves_existing_proposal(tmp_path, monkeypatch):
     # Build the old schema in isolation, without ever opening the real database.
-    source = subprocess.run(['git', 'show', '73ddf28:store.py'], check=True,
+    # Immutable v1 Store blob: stable across privacy-only commit metadata rewrites.
+    source = subprocess.run(['git', 'show', '6572fd43139e4e9bd552f8ca29445d66c9e097fd'], check=True,
                             capture_output=True, text=True).stdout
     tree = ast.parse(source)
     schema = next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign)
@@ -429,7 +430,7 @@ def test_failed_document_read_can_be_recorded_as_unknown(changed, monkeypatch):
 
 
 def old_store(tmp_path):
-    source = subprocess.run(['git', 'show', '73ddf28:store.py'], check=True,
+    source = subprocess.run(['git', 'show', '6572fd43139e4e9bd552f8ca29445d66c9e097fd'], check=True,
                             capture_output=True, text=True).stdout
     schema = next(ast.literal_eval(n.value) for n in ast.parse(source).body
         if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'SCHEMA' for t in n.targets))
