@@ -10,6 +10,8 @@ needs `Authorization: Bearer <UNDRIFT_REVIEW_TOKEN>`. There is no endpoint for a
 from __future__ import annotations
 
 import ipaddress
+import json
+import re
 import os
 from datetime import date
 from pathlib import Path
@@ -68,6 +70,28 @@ class PolicyChangeBody(BaseModel):
     voluntary_return_days: int
     effective_from: date
     description: str = Field(min_length=1, max_length=4000)
+
+
+SOURCE_KINDS = {'live', 'isolated', 'fixture', 'historical'}
+_LOCAL_URL = re.compile(r'^http://(127\.0\.0\.1|localhost):\d{2,5}/?$')
+
+
+def local_sources() -> list[dict[str, str]]:
+    """Labelled loopback environments for the operator source switcher. No credentials, ever."""
+    path = Path(os.environ.get('UNDRIFT_SOURCES_FILE', '').strip() or config.ROOT / '.tools' / 'local-sources.json')
+    try:
+        items = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else []
+    except (OSError, ValueError):
+        return []
+    out = []
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        url, kind = str(item.get('url', '')), str(item.get('kind', ''))
+        if _LOCAL_URL.fullmatch(url) and kind in SOURCE_KINDS:
+            out.append({'label': str(item.get('label', ''))[:60], 'url': url.rstrip('/'), 'kind': kind,
+                        'description': str(item.get('description', ''))[:200]})
+    return out[:12]
 
 
 class GuardBody(BaseModel):
@@ -197,6 +221,13 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
     async def health(_: Request) -> JSONResponse:
         return JSONResponse({"status": "ok", "database": store.path.name,
                              "database_id": await run_in_threadpool(store.identity)})
+
+    async def sources(_: Request) -> JSONResponse:
+        def current():
+            return {'current': {'database': store.path.name, 'database_id': store.identity(),
+                                'profile': store.metadata('operational_profile')},
+                    'sources': local_sources()}
+        return JSONResponse(await run_in_threadpool(current))
 
     async def reliability_report(request: Request) -> JSONResponse:
         import reliability
@@ -473,6 +504,7 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
     app = Starlette(
         routes=[
             Route("/api/health", health),
+            Route('/api/sources', sources),
             Route('/api/guard', guard_overview),
             Route('/api/guard/checks', guard_run, methods=['POST']),
             Route('/api/guard/checks/{check_id}', guard_check),

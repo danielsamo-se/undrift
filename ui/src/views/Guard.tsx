@@ -107,9 +107,10 @@ export function MemoryRecallPanel({ recall, check, canSave, onSaved }: {
 export function GuardView({ selectedId = null }: { selectedId?: string | null }) {
   const jury = useJury(); const session = useReviewerSession(); const live = useLive();
   const overview = useResource(signal => api.guard(signal), live.latestSeq);
+  const effectiveId = selectedId ?? (jury.readonly ? overview.data?.checks.find(c => c.decision_source === 'cominty_guard')?.id ?? null : null);
   const impact = useImpact();
-  const detail = useResource(signal => selectedId && !jury.readonly ? api.guardDetail(selectedId, signal) : Promise.resolve(null),
-    `${selectedId}:${live.latestSeq}`);
+  const detail = useResource(signal => effectiveId ? api.guardDetail(effectiveId, signal) : Promise.resolve(null),
+    `${effectiveId}:${live.latestSeq}`);
   const [candidate, setCandidate] = useState('');
   const [channel, setChannel] = useState('support-snippets');
   const [evidence, setEvidence] = useState<string[]>([]);
@@ -125,8 +126,8 @@ export function GuardView({ selectedId = null }: { selectedId?: string | null })
   const readonly = jury.readonly || !o.journal_configured;
   const docs = impact.data?.documents ?? [];
   const channels = impact.data?.channels ?? [];
-  const selected = (fresh && fresh.id === selectedId ? fresh : o.checks.find(c => c.id === selectedId)) ?? null;
-  const recall = detail.data && detail.data.check.id === selectedId ? detail.data.memory_recall : null;
+  const selected = (fresh && fresh.id === effectiveId ? fresh : o.checks.find(c => c.id === effectiveId)) ?? null;
+  const recall = detail.data && detail.data.check.id === effectiveId ? detail.data.memory_recall : null;
 
   async function verify() {
     setBusy(true); setError(null);
@@ -138,18 +139,27 @@ export function GuardView({ selectedId = null }: { selectedId?: string | null })
     finally { setBusy(false); }
   }
 
+  const recordedList = <section className="section"><h2 className="guard-h2">Recorded checks</h2>
+    {o.checks.length ? <ul className="plain-list">{o.checks.map(c => <li key={c.id}>
+      <button className={`row-link${c.id === effectiveId ? ' is-current' : ''}`} onClick={() => navigate('guard', c.id)}>
+        <span className={`guard-decision guard-d-${c.decision.toLowerCase()} is-small`}>{DECISION_TEXT[c.decision]}</span>
+        <span className="row-link-title">{c.candidate_redacted}</span>
+        <span className="muted small guard-src-short">{SOURCE_LABEL[c.decision_source]?.split(':')[0]}</span>
+      </button></li>)}</ul> : <p className="muted">No Guard checks recorded for this database.</p>}
+  </section>;
+
   return <div className="page guard-page">
     <header className="ph"><div><h1>Guard</h1>
       <p className="ph-sub">Fail-closed validation of outgoing policy and support responses. Guard decides only whether a text may be released; it never sends or publishes.</p></div></header>
+    {jury.readonly ? <p className="note guard-mode" data-testid="guard-mode">Recorded evidence. The separate Cominty Guard agent ran once for real (the ALLOW check, verified by the server). The other checks were decided by the deterministic precheck or failed closed without an agent; they are labelled as such. Nothing runs from this site.</p> :
     <p className={`note ${ex.mode === 'cominty' ? '' : 'note-warn'} guard-mode`} data-testid="guard-mode">
       {ex.mode === 'cominty'
         ? 'Real Cominty Guard agent configured. Each check is a paid Cominty execution and needs explicit confirmation.'
         : 'Cominty Guard agent not activated. Checks run the deterministic precheck and then fail closed: no response can become release-eligible.'}
-    </p>
-    {jury.readonly && <p className="note">Read-only replay: recorded Guard checks only.</p>}
+    </p>}
     {!jury.readonly && !o.journal_configured && <p className="note note-warn">This service has no Guard audit journal configured, so checks cannot be run here.</p>}
     <div className="guard-layout">
-      <form className="guard-form section" onSubmit={e => { e.preventDefault(); void verify(); }}>
+      {jury.readonly ? recordedList : <form className="guard-form section" onSubmit={e => { e.preventDefault(); void verify(); }}>
         <label className="field"><span>Draft customer-facing response</span>
           <textarea rows={5} maxLength={2000} value={candidate} disabled={readonly || busy} onChange={e => setCandidate(e.target.value)}
             placeholder="e.g. Orders purchased on or after November 4, 2026 are eligible for the standard 30-day voluntary return window." /></label>
@@ -169,19 +179,12 @@ export function GuardView({ selectedId = null }: { selectedId?: string | null })
         <button className="btn btn-primary" disabled={readonly || busy || !session || !candidate.trim() || (ex.paid && !confirmPaid)}>
           {busy && <Spinner />} Verify with Guard</button>
         {error && <p role="alert" className="field-error">{error}</p>}
-      </form>
+      </form>}
       <div className="guard-side">
         {selected ? <><GuardResult check={selected} />
           <MemoryRecallPanel recall={recall} check={selected} canSave={!readonly && !!session} onSaved={detail.reload} /></>
           : <p className="muted">Run a check or select a recorded one.</p>}
-        <section className="section"><h2 className="guard-h2">Recorded checks</h2>
-          {o.checks.length ? <ul className="plain-list">{o.checks.map(c => <li key={c.id}>
-            <button className="row-link" onClick={() => navigate('guard', c.id)}>
-              <span className={`guard-decision guard-d-${c.decision.toLowerCase()} is-small`}>{DECISION_TEXT[c.decision]}</span>
-              <span className="row-link-title">{c.candidate_redacted}</span>
-              <span className="muted small guard-src-short">{SOURCE_LABEL[c.decision_source]?.split(':')[0]}</span>
-            </button></li>)}</ul> : <p className="muted">No Guard checks recorded for this database.</p>}
-        </section>
+        {!jury.readonly && recordedList}
       </div>
     </div>
     {unlock && <UnlockDialog onClose={() => setUnlock(false)} />}

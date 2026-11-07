@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ApiError, api } from '../api/client';
 import { useReviewerSession } from '../api/session';
-import type { MemorySnapshot, NotificationsSnapshot } from '../api/types';
+import type { MemorySnapshot, NotificationsSnapshot, RecordedMemory, RecordedNotifications } from '../api/types';
 import { UnlockDialog } from '../components/ReviewerSession';
 import { ErrorState, LoadingBlock, Spinner } from '../components/ui';
 import { formatDateTime, shortId } from '../lib/format';
@@ -107,13 +107,60 @@ export function SlackSection({ data, canWrite, onChanged }: { data: Notification
   </section>;
 }
 
+export function RecordedIntegrations({ memory, notes }: { memory: RecordedMemory; notes: RecordedNotifications }) {
+  const c = notes.connector;
+  return <div className="integrations-grid">
+    <section aria-label="Cominty Memory evidence" data-testid="recorded-memory">
+      <h2 className="guard-h2">Cominty Memory</h2>
+      <p className="note">Native Cominty Memory, namespace <code>{memory.namespace}</code>. {memory.note} Captured {formatDateTime(memory.captured_at)}.</p>
+      {memory.files.length ? memory.files.map(f => <article key={f.path} className="integration-card">
+        <h3><code>{f.path}</code><span className="origin-tag is-cominty">Stored in Cominty · version {f.cominty_version}</span></h3>
+        <dl className="facts">
+          <dt>Kind</dt><dd>{f.kind === 'verified_interpretation' ? `Verified Guard verdict ${f.verdict ?? ''}` : f.kind ?? 'unknown'}</dd>
+          <dt>Policy binding</dt><dd>{f.policy ? <><code>{f.policy.id}</code> v{f.policy.version} · fingerprint <code>{f.policy.sha256.slice(0, 12)}</code></> : 'none'}</dd>
+          <dt>Provenance</dt><dd>Guard check{' '}
+            <button type="button" className="link" onClick={() => f.source_check_id && navigate('guard', f.source_check_id)}><code>{f.source_check_id}</code></button>
+            {' '}· Cominty message <code>{shortId(f.cominty_message_id ?? '', 12)}</code> · saved by {f.saved_by}</dd>
+          <dt>Read-back</dt><dd>{f.content_chars} characters · sha256 <code>{f.content_sha256.slice(0, 12)}</code> · {f.matches_local_write_record ? 'identical to Undrift’s write record' : 'differs from the write record'} · {f.unchanged_since_write ? 'unchanged since written' : 'modified after writing'}</dd>
+        </dl>
+        <p className="note note-warn">Interpretation text withheld: {f.withheld_reason}</p>
+      </article>) : <p className="muted">No memory files were recorded.</p>}
+      <p className="muted small">Memory is scoped to one policy version. A later Guard check recalled this file as context; the decision was still computed independently and memory can never release text.</p>
+    </section>
+    <section aria-label="Slack notifications" data-testid="recorded-slack">
+      <h2 className="guard-h2">Slack notifications</h2>
+      <div className="integration-card">
+        <h3>Cominty connector <code>{notes.connection}</code><span className="origin-tag">prepared, not connected</span></h3>
+        <p className="small">{c ? `${c.title}: ${c.is_enabled ? 'enabled' : 'not enabled'}${c.requires_oauth_connect ? ' · requires OAuth connection' : ''}` : 'Status unavailable.'}</p>
+        <p className="small">{notes.note}</p>
+        <p className="muted small">When connected, a dedicated Notifier agent may only use the official Slack connector. Delivery counts only with platform confirmation, is never duplicated, and Slack can never approve anything.</p>
+      </div>
+    </section>
+  </div>;
+}
+
+function RecordedIntegrationsView() {
+  const memory = useResource(signal => api.recordedMemory(signal), 'memory');
+  const notes = useResource(signal => api.recordedNotifications(signal), 'notes');
+  const header = <header className="ph"><div><h1>Memory &amp; Slack</h1>
+    <p className="ph-sub">Native Cominty platform integrations, shown as recorded evidence.</p></div></header>;
+  if (memory.error || notes.error) return <div className="page integrations-page">{header}
+    <p className="note">This archive has no Memory or Slack evidence. Open the “Guard &amp; Cominty Memory” archive from the jury guide.</p></div>;
+  if (!memory.data || !notes.data) return <LoadingBlock rows={6} />;
+  return <div className="page integrations-page">{header}<RecordedIntegrations memory={memory.data} notes={notes.data} /></div>;
+}
+
 export function IntegrationsView() {
-  const jury = useJury(); const session = useReviewerSession(); const live = useLive();
+  const jury = useJury();
+  if (jury.readonly) return <RecordedIntegrationsView />;
+  return <OperatorIntegrationsView />;
+}
+
+function OperatorIntegrationsView() {
+  const session = useReviewerSession(); const live = useLive();
   const memory = useResource(signal => api.memory(signal), live.latestSeq);
   const notes = useResource(signal => api.notifications(signal), live.latestSeq);
   const [unlock, setUnlock] = useState(false);
-  if (jury.readonly) return <div className="page"><header className="ph"><div><h1>Memory &amp; Slack</h1>
-    <p className="ph-sub">Not part of the historical jury replay.</p></div></header></div>;
   const err = (memory.error && !memory.data) ? memory : (notes.error && !notes.data) ? notes : null;
   if (err?.error) return <ErrorState error={err.error} onRetry={err.reload} />;
   if (!memory.data || !notes.data) return <LoadingBlock rows={8} />;

@@ -14,7 +14,7 @@ import type {
   Conversation,
   ReliabilityReport,
   AutonomySnapshot, AutonomyPolicy, AutonomyMode,
-  GuardOverview, GuardCheck, MemoryRecall, MemorySnapshot, NotificationsSnapshot, NotificationDelivery,
+  GuardOverview, GuardCheck, SourcesSnapshot, RecordedMemory, RecordedNotifications, MemoryRecall, MemorySnapshot, NotificationsSnapshot, NotificationDelivery,
 } from "./types";
 
 export class ApiError extends Error {
@@ -92,6 +92,9 @@ export const api = {
   memory: (signal?: AbortSignal) => request<MemorySnapshot>('/api/memory', { signal }),
   rememberCheck: (check_id: string) => authorized<{ file: { path: string; version: string } }>('/api/memory/interpretations', { check_id }),
   rememberFact: (statement: string) => authorized<{ file: { path: string; version: string } }>('/api/memory/facts', { statement }),
+  sources: (signal?: AbortSignal) => request<SourcesSnapshot>('/api/sources', { signal }),
+  recordedMemory: (signal?: AbortSignal) => request<RecordedMemory>('/api/memory', { signal }),
+  recordedNotifications: (signal?: AbortSignal) => request<RecordedNotifications>('/api/notifications', { signal }),
   notifications: (signal?: AbortSignal) => request<NotificationsSnapshot>('/api/notifications', { signal }),
   notify: (key: string, confirm_paid: boolean) => authorized<{ delivery: NotificationDelivery }>('/api/notifications', { key, confirm_paid }),
   autonomy: (signal?: AbortSignal) => request<AutonomySnapshot>('/api/autonomy', { signal }),

@@ -331,6 +331,22 @@ export interface NotificationsSnapshot {
   deliveries: NotificationDelivery[];
 }
 
+export interface RecordedMemoryFile {
+  path: string; namespace: string; cominty_version: string; created_at: string; updated_at: string; purpose: string;
+  content_sha256: string; content_chars: number; matches_local_write_record: boolean; unchanged_since_write: boolean;
+  kind: string | null; verdict: string | null; policy: { id: string; version: number; sha256: string } | null;
+  policy_status_at_capture: string; source_check_id: string | null; cominty_message_id: string | null;
+  saved_by: string | null; saved_at: string | null; display: 'metadata_only'; withheld_reason: string;
+}
+export interface RecordedMemory { recorded: true; source: string; namespace: string; captured_at: string; files: RecordedMemoryFile[]; note: string }
+export interface RecordedNotifications {
+  recorded: true; connection: string; agent_configured: boolean; channel: string | null; deliveries: unknown[]; grants_approval: false; note: string;
+  connector: { name: string; title: string; is_enabled: boolean; requires_oauth_connect: boolean; connection_status: string | null } | null;
+}
+
+export interface LocalSource { label: string; url: string; kind: 'live' | 'isolated' | 'fixture' | 'historical'; description: string }
+export interface SourcesSnapshot { current: { database: string; database_id: string; profile: string | null }; sources: LocalSource[] }
+
 export type AutonomyMode = 'review_required' | 'bounded_auto' | 'pull_request' | 'manual_only';
 export interface AutonomyPolicy extends Channel {
   channel_id: string; version: number; mode: AutonomyMode; effective_mode: AutonomyMode;

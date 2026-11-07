@@ -8,6 +8,31 @@ It has no dependency on the laptop, ngrok, local API services, Cominty availabil
 or GitHub credentials. The operational Python application and local reviewer flow
 remain unchanged and separate.
 
+## Release v3 (prepared; deployment pending)
+
+The live site still serves version 2, recorded in `deployment/jury/deployment.json`. Version 3 is built and verified locally but **not deployed**: Sites deployment runs through the Codex Sites workflow, which this checkout cannot invoke.
+
+What v3 changes:
+
+- **Landing page:** a new jury landing page with the core message, a before/after policy panel, key metrics, an evidence legend and a nine-step guided journey.
+- **Three new archives (12 in total):**
+  - `autonomy`: the recorded v6 delegation and audit;
+  - `autonomy-fixture`: the scripted fixture, labelled as a fixture in the banner and catalog;
+  - `guard`: one real Cominty Guard ALLOW plus deterministic and fail-closed checks, all labelled.
+- **Memory and Slack:** a metadata-only read-back of the native Cominty Memory file and the Slack connector status. Slack is not connected.
+- **Memory text withheld:** the stored memory interpretation text, which contains a known redaction defect, is not published.
+- **Unchanged:** the Worker code. The release only adds read-only datasets.
+
+Build artifacts:
+- package: `.tools/jury-site-v3` (git-ignored);
+- export: `.tools/jury-replay-v3.json`, snapshot `ed2dc39075fba64c…`;
+- verification: `.tools/verify_jury_v3.py`, which checks the 12 database identities, the Guard, Memory and Autonomy evidence, 44 write attempts (all 403), private paths (404) and 10 browser routes, including a phone width.
+
+To deploy:
+1. Save and deploy `.tools/jury-site-v3/dist` as a new version of the registered project `appgprj_6aeeeefd…`. Version 2 remains the rollback.
+2. Run `.venv\Scripts\python.exe -B .tools\verify_jury_v3.py https://undrift-jury-demo.equalglass4.chatgpt.site`.
+3. Update `deployment/jury/deployment.json`.
+
 ## Architecture and scope
 
 `jury.py` exports nine independent archives using the existing API handlers and

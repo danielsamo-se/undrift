@@ -2,6 +2,7 @@ import { Activity, GitPullRequest, LayoutGrid, Waypoints, ShieldCheck, ScanText,
 import type { LucideIcon } from "lucide-react";
 import { useEffect } from "react";
 import { ReviewerControl } from "./components/ReviewerSession";
+import { SourceSwitcher } from "./components/SourceSwitcher";
 import { useProposals } from "./lib/data";
 import { relativeTime } from "./lib/format";
 import { navigate, useNow, useRoute, type View } from "./lib/hooks";
@@ -87,6 +88,7 @@ function Shell() {
           ))}
         </nav>
         <div className="side-foot">
+          {!jury.readonly && <SourceSwitcher />}
           {jury.readonly ? <p className="muted small">Read-only historical evidence</p> : <ReviewerControl />}
           <dl className="sys">
             <div>

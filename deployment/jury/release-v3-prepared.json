@@ -1,0 +1,51 @@
+{
+  "status": "prepared_not_deployed",
+  "live_version_unchanged": 2,
+  "project_id": "appgprj_6aeeeefd422881919acadfc0e3ff7f1f",
+  "snapshot_id": "ed2dc39075fba64cddcfc85ae3691b276d069980d7139fb7c08a71b4bb3587a3",
+  "worker_sha256": "4873df971ab70f45a25d4f76cd7a3029e22c13158dfb439bb39fd71d6a3e9234",
+  "module_bytes": 4004898,
+  "gzip_bytes": 1133251,
+  "archives": 12,
+  "source_databases": [
+    "b00e1c9afd9c4f188b2f225bc895b2bf",
+    "b63987b2714c48f38bc8b8de6664d18c",
+    "7fca0630671440ed936569c0e77c9c4a",
+    "3afdc367a5384356a685c790303f2f83",
+    "b4476b3881fd40daa5038bcf8c33d3f4",
+    "8dc2d31c35a1455daa0165899d154cf0",
+    "831461e7d45e47429bf5d1da42c4a899",
+    "a2fd8cc4ae444492bdfa70bb674f7e59",
+    "f6ce612fc16b42b48aeccf750162ae2f",
+    "47563f9dd68847a8866a746a1dbabfb1",
+    "d1f1ca2ef34940d29e341889c797eb1f",
+    "fd569ecf81d64b83a7205206c86e0b0a"
+  ],
+  "mode": "historical_readonly",
+  "runtime_secrets": 0,
+  "mcp_server": false,
+  "write_routes": 0,
+  "local_verification": {
+    "database_identities": 12,
+    "writes_denied": 44,
+    "guard_live_check": true,
+    "memory_metadata_only": true,
+    "slack_not_connected": true,
+    "autonomy_config": true,
+    "private_paths_404": true,
+    "preserved_historical_files": 101
+  },
+  "browser_routes_verified": [
+    "reliability",
+    "guide",
+    "guide-mobile",
+    "impact",
+    "review",
+    "autonomy",
+    "fixture",
+    "guard",
+    "memory",
+    "activity"
+  ],
+  "deploy_steps": "docs/PUBLIC_DEMO.md#release-v3-prepared-deployment-pending"
+}
