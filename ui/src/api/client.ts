@@ -1,4 +1,5 @@
 import { reviewerSession } from "./session";
+import { PUBLIC_JURY, replayRequest } from '../lib/jury-mode';
 import type {
   EventsPage,
   ImpactSnapshot,
@@ -33,12 +34,15 @@ interface RequestOptions {
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  if(PUBLIC_JURY && options.method && options.method!=='GET') {
+    throw new ApiError(403,'jury_readonly','Historical jury replay is read-only.');
+  }
   const headers: Record<string, string> = { accept: "application/json" };
   if (options.body !== undefined) headers["content-type"] = "application/json";
   if (options.token) headers.authorization = `Bearer ${options.token}`;
   let response: Response;
   try {
-    response = await fetch(path, {
+    response = await fetch(replayRequest(path), {
       method: options.method ?? "GET",
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),

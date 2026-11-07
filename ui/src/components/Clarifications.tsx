@@ -5,6 +5,7 @@ import type { Conversation, NativeQuestion } from '../api/types';
 import { useResource } from '../lib/hooks';
 import { useLive } from '../lib/live';
 import { UnlockDialog } from './ReviewerSession';
+import { useJury } from '../lib/jury';
 
 function Question({ question, ready, onAnswered }: { question: NativeQuestion; ready: boolean; onAnswered: () => void }) {
   const session = useReviewerSession();
@@ -42,6 +43,7 @@ function Question({ question, ready, onAnswered }: { question: NativeQuestion; r
 }
 
 export function ConversationQuestions({ conversation, reload }: { conversation: Conversation; reload: () => void }) {
+  const jury=useJury();
   return <section className="panel" aria-label="Native agent clarification" style={{ padding: 16, marginBottom: 16 }}>
     <h2>Agent clarification · {conversation.state.replaceAll('_', ' ')}</h2>
     <p className="muted small">Conversation {conversation.id} · {conversation.phases.length}/{conversation.max_turns} turns ·
@@ -54,7 +56,7 @@ export function ConversationQuestions({ conversation, reload }: { conversation: 
       <p className="muted small">Phase {phase.ordinal} · {phase.state.replaceAll('_', ' ')} · {phase.run_id}
         {phase.cost && ` · reported cost ${phase.cost.total ?? 'unavailable'}`}</p>
       {phase.questions.map(q => <Question key={q.id} question={q}
-        ready={conversation.state === 'awaiting_answers'} onAnswered={reload} />)}
+        ready={!jury.readonly && conversation.state === 'awaiting_answers'} onAnswered={reload} />)}
     </div>)}
     {conversation.state === 'ready' && (conversation.continuation_blocker ?
       <p role="alert">Answers saved. Continuation blocked: {conversation.continuation_blocker}</p> :

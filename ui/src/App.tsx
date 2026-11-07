@@ -11,6 +11,7 @@ import { ImpactView } from "./views/Impact";
 import { OverviewView } from "./views/Overview";
 import { ReviewView } from "./views/Review";
 import { ReliabilityView } from './views/Reliability';
+import { JuryProvider, JuryBanner, JuryGuide, useJury } from './lib/jury';
 
 const NAV: { view: View; label: string; icon: LucideIcon; key: string }[] = [
   { view: "overview", label: "Overview", icon: LayoutGrid, key: "1" },
@@ -32,6 +33,7 @@ export function Mark({ size = 20 }: { size?: number }) {
 }
 
 function Shell() {
+  const jury=useJury();
   const route = useRoute();
   const live = useLive();
   const now = useNow(5000);
@@ -65,6 +67,7 @@ function Shell() {
           Shiftly <span>fictional workspace</span>
         </p>
         <nav className="nav" aria-label="Main">
+          {jury.readonly && <a className={`nav-item${route.view==='tour'?' is-active':''}`} href="#/tour">Jury guide</a>}
           {NAV.map(({ view, label, icon: Icon, key }) => (
             <a key={view} href={`#/${view}`} className={`nav-item${route.view === view ? " is-active" : ""}`} aria-current={route.view === view ? "page" : undefined}>
               <Icon size={15} aria-hidden />
@@ -78,22 +81,24 @@ function Shell() {
           ))}
         </nav>
         <div className="side-foot">
-          <ReviewerControl />
+          {jury.readonly ? <p className="muted small">Read-only historical evidence</p> : <ReviewerControl />}
           <dl className="sys">
             <div>
               <dt>API</dt>
               <dd className={`is-${live.status}`}>
-                {live.status === "live" ? `synced ${live.lastSync ? relativeTime(new Date(live.lastSync).toISOString(), now) : ""}` : live.status}
+                {live.status === "live" ? jury.readonly?'replay ready':`synced ${live.lastSync ? relativeTime(new Date(live.lastSync).toISOString(), now) : ""}` : live.status}
               </dd>
             </div>
             <div>
               <dt>MCP</dt>
-              <dd>{lastMcp ? `last call ${relativeTime(lastMcp.ts, now)}` : "no calls loaded"}</dd>
+              <dd>{lastMcp ? jury.readonly?'recorded calls':`last call ${relativeTime(lastMcp.ts, now)}` : "no calls loaded"}</dd>
             </div>
           </dl>
         </div>
       </aside>
       <main className="main">
+        <JuryBanner />
+        {jury.readonly && route.view==='tour' && <JuryGuide />}
         {route.view === "overview" && <OverviewView />}
         {route.view === "impact" && <ImpactView selectedId={route.param} />}
         {route.view === "review" && <ReviewView selectedId={route.param} />}
@@ -106,8 +111,8 @@ function Shell() {
 
 export function App() {
   return (
-    <LiveEventsProvider>
+    <JuryProvider><LiveEventsProvider>
       <Shell />
-    </LiveEventsProvider>
+    </LiveEventsProvider></JuryProvider>
   );
 }

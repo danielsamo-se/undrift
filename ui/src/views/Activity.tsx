@@ -7,6 +7,7 @@ import { GROUP_LABEL, buildTimeline, groupOf, itemSeq, type EventGroup, type Tim
 import { dayKey, formatCost, formatTime, plural, relativeTime, shortId } from "../lib/format";
 import { useNow } from "../lib/hooks";
 import { POLL_MS, useLive } from "../lib/live";
+import { useJury } from '../lib/jury';
 
 const GROUPS: EventGroup[] = ["agent", "mcp", "policy", "review", "security", "system"];
 
@@ -17,6 +18,7 @@ function matches(item: TimelineItem, filter: EventGroup | null): boolean {
 }
 
 export function ActivityView({ focusRun }: { focusRun: string | null }) {
+  const jury=useJury();
   const live = useLive();
   const now = useNow(5000);
   const runs = useRuns();
@@ -66,7 +68,7 @@ export function ActivityView({ focusRun }: { focusRun: string | null }) {
         <div className="ph-actions">
           <span className={`livestate livestate-${live.status}`} role="status">
             <span className="livestate-dot" aria-hidden />
-            {live.status === "live" && `Live · ${POLL_MS / 1000}s`}
+            {live.status === "live" && (jury.readonly?'Recorded activity':`Live · ${POLL_MS / 1000}s`)}
             {live.status === "paused" && "Paused"}
             {live.status === "offline" && "Offline · retrying"}
             {live.status === "connecting" && "Connecting"}

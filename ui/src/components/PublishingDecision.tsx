@@ -6,11 +6,13 @@ import { useResource } from "../lib/hooks";
 import { Modal, Spinner } from "./ui";
 import { DiffView } from "./DiffView";
 import { UnlockDialog } from "./ReviewerSession";
+import { useJury } from '../lib/jury';
 
 const stages = ["approved", "pr_created", "merged", "deployed", "verified"] as const;
 const labels = ["Approved", "PR created", "Merged", "Deployed", "Verified"];
 
 export function PublishingDecision({ detail }: { detail: ProposalDetail }) {
+  const jury=useJury();
   const p = detail.proposal;
   const session = useReviewerSession();
   const state = useResource((signal) => api.publication(p.id, signal), p.status);
@@ -40,7 +42,7 @@ export function PublishingDecision({ detail }: { detail: ProposalDetail }) {
     })}</ol>
     {!state.data?.configured && !state.loading && <p className="note note-warn">Repository publishing needs operator setup. Your approval is saved.</p>}
     {state.error && <p className="field-error">{state.error.message}</p>}
-    <p>Create a GitHub pull request for this exact reviewed correction. You review and merge it on GitHub; the connected storefront deploys afterward.</p>
+    <p>{jury.readonly?'Historical publishing evidence. Approval, PR creation, merge and deployment verification retain their recorded identities and timestamps.':'Create a GitHub pull request for this exact reviewed correction. You review and merge it on GitHub; the connected storefront deploys afterward.'}</p>
     {publication?.pr && <p><a className="text-btn" href={publication.pr.url} target="_blank" rel="noreferrer">Open pull request #{publication.pr.number} ↗</a></p>}
     {publication?.target.site_url && <p><a href={`${publication.target.site_url}/returns/`} target="_blank" rel="noreferrer">View Shiftly Returns &amp; Refunds ↗</a></p>}
     {publication?.status === "verified" && publication.verified_at && <p className="note">Verified public policy against the reviewed text and merged commit at {new Date(publication.verified_at).toLocaleString()}.</p>}
@@ -50,12 +52,12 @@ export function PublishingDecision({ detail }: { detail: ProposalDetail }) {
     {publication?.status === "blocked" && <p className="note note-bad">Publishing is blocked. Inspect the error and GitHub PR before retrying.</p>}
     {publication?.error && <p className="field-error">{publication.error}</p>}
     {error && <p className="field-error" role="alert">{error}</p>}
-    <div className="decision-actions">
+    {!jury.readonly && <div className="decision-actions">
       {publication?.pr ? (session
         ? <button className="btn" disabled={busy} onClick={() => void act("refresh")}>{busy && <Spinner />} Check merge and deployment</button>
         : <button className="btn" disabled={busy} onClick={() => setUnlock(true)}>Unlock reviewer session to check deployment</button>)
         : <button className="btn btn-primary" disabled={!session || !fresh || busy || !state.data?.configured} onClick={() => void act("plan")}>{busy && <Spinner />} Review repository change</button>}
-    </div>
+    </div>}
     {publication?.events.length ? <details><summary>Publishing audit trail</summary><ul className="plain-list">{publication.events.map(e => <li key={e.seq}>{new Date(e.ts).toLocaleString()} · {e.type.replace("publishing.", "").replaceAll("_", " ")}</li>)}</ul></details> : null}
     {plan && <Modal title="Authorize this GitHub change" onClose={() => !busy && setPlan(null)} footer={<>
       <button className="btn" disabled={busy} onClick={() => setPlan(null)}>Cancel</button>

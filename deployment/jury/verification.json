@@ -1,0 +1,58 @@
+{
+  "snapshot_id": "47318482aa4e3511b47aa8a13f3193f4cfcd58e745ddc00218c4eefb6f22eb29",
+  "database_identities": true,
+  "exact_publication_commit": true,
+  "native_human_answers": true,
+  "reliability_series_separate": true,
+  "writes_denied": true,
+  "private_files_inaccessible": true,
+  "no_fabricated_fresh_events": true,
+  "guide": {
+    "rendered": true,
+    "historical_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "screenshot": true
+  },
+  "impact": {
+    "rendered": true,
+    "historical_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "screenshot": true
+  },
+  "review": {
+    "rendered": true,
+    "historical_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "screenshot": true
+  },
+  "reliability": {
+    "rendered": true,
+    "historical_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "screenshot": true
+  },
+  "activity": {
+    "rendered": true,
+    "historical_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "screenshot": true
+  },
+  "preserved_historical_files": 102,
+  "public_url": "https://undrift-jury-demo.equalglass4.chatgpt.site",
+  "anonymous": true,
+  "local_preview_stopped": true,
+  "tests": {
+    "backend_passed": 391,
+    "frontend_passed": 64,
+    "worker_security_passed": 5,
+    "typescript": "passed",
+    "production_build": "passed"
+  },
+  "existing_services_unchanged": 6,
+  "paid_cominty_executions": 0
+}

@@ -14,6 +14,7 @@ import { groupOf } from "../lib/events";
 import { formatCost, formatDate, formatDateTime, humanizeActor, plural, relativeTime, shortId } from "../lib/format";
 import { navigate, useNow } from "../lib/hooks";
 import { useLive } from "../lib/live";
+import { useJury } from '../lib/jury';
 
 export function OverviewView() {
   const impact = useImpact();
@@ -24,6 +25,7 @@ export function OverviewView() {
 }
 
 function Overview({ snap, proposals, reload }: { snap: ImpactSnapshot; proposals: Proposal[]; reload: () => void }) {
+  const jury=useJury();
   const now = useNow(1000);
   const live = useLive();
   const session = useReviewerSession();
@@ -56,9 +58,9 @@ function Overview({ snap, proposals, reload }: { snap: ImpactSnapshot; proposals
             {previous && <span className="muted"> · was {previous.voluntary_return_days} days in P{previous.version}</span>}
           </span>
         </div>
-        <button className="btn btn-sm" onClick={() => setDialog(session ? "change" : "unlock")}>
+        {!jury.readonly && <button className="btn btn-sm" onClick={() => setDialog(session ? "change" : "unlock")}>
           Change policy
-        </button>
+        </button>}
         <Disclosure summary="Authoritative text and version history">
           <blockquote className="policy-text">{policy.description}</blockquote>
           <table className="table">

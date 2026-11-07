@@ -6,6 +6,7 @@ import type { Proposal, ProposalDetail } from "../api/types";
 import { formatDateTime } from "../lib/format";
 import { UnlockDialog } from "./ReviewerSession";
 import { DocVersion, Modal, Spinner } from "./ui";
+import { useJury } from '../lib/jury';
 
 type Action = "approve" | "reject" | "apply";
 
@@ -51,6 +52,7 @@ function Flow({ status }: { status: Proposal["status"] }) {
 }
 
 export function ReviewDecision({ detail, onChanged }: { detail: ProposalDetail; onChanged: (p: Proposal) => void }) {
+  const jury=useJury();
   const session = useReviewerSession();
   const [pending, setPending] = useState<Action | null>(null);
   const [note, setNote] = useState("");
@@ -81,6 +83,7 @@ export function ReviewDecision({ detail, onChanged }: { detail: ProposalDetail; 
   };
 
   const closed = p.status === "applied" || p.status === "rejected";
+  if(jury.readonly)return <section className="decision" aria-label="Decision"><h2>Recorded human review</h2><Flow status={p.status}/><p>This historical proposal is {p.status.replaceAll('_',' ')}. {p.reviewed_by && `Reviewer: ${p.reviewed_by}.`} {p.review_note}</p><p className="note">Read-only replay. Approving, rejecting and applying changes are unavailable.</p></section>;
   return (
     <section className="decision" aria-label="Decision">
       <header className="decision-head">
