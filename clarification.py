@@ -117,8 +117,6 @@ def capture(store, run_id, questions, *, actor, metadata):
         if not p or not p['message_id']:
             raise workflow.Conflict('native questions require a bound conversation message')
         _versions(store, run, c)
-        from discovery import validate_search_strategy
-        strategy = validate_search_strategy(store, run, c)
         rows = []
         for index, question in enumerate(questions):
             prompt = _text(question.prompt)
@@ -138,19 +136,50 @@ def capture(store, run_id, questions, *, actor, metadata):
                          run.policy_version, prompt, json.dumps(options), config.redact(store.document(did, version, c).content)))
         if sum(len(row[6]) for row in rows) > 12000:
             raise workflow.WorkflowError('native questions exceed the bounded conversation context')
+        # Capture admissible provider evidence independently of execution quality.
+        # Never swallow auth, version, storage or programming failures as a strategy failure.
+        from discovery import SearchStrategyViolation, validate_search_strategy
+        failure = None
+        try:
+            strategy = validate_search_strategy(store, run, c)
+        except SearchStrategyViolation as exc:
+            strategy = exc.details['observed']
+            failure = {'status': 'failed', 'code': exc.code, 'message': str(exc), 'details': exc.details}
+        state = 'failed' if failure else 'awaiting_answers'
         for row in rows:
             c.execute('INSERT INTO clarification_questions(id,run_id,ordinal,document_id,document_version,'
                       'policy_version,prompt,options,evidence) VALUES (?,?,?,?,?,?,?,?,?)', row)
-        workflow.close_run(store, run_id, status='incomplete', actor=actor,
-                           metadata={**metadata, 'awaiting_clarification': True, 'search_strategy': strategy},
-                           error='Native questions require reviewer answers', _conn=c)
+        workflow.close_run(store, run_id, status='failed' if failure else 'incomplete', actor=actor,
+                           metadata={**metadata, 'native_questions_captured': True,
+                                     'awaiting_clarification': not bool(failure), 'search_strategy': strategy,
+                                     'strategy_validation': failure or {'status': 'passed' if strategy.get('enforced') else 'not_enforced'}},
+                           error=failure['message'] if failure else 'Native questions require reviewer answers', _conn=c)
         # Immediately revoke the capability; no live heartbeat or token waits on a human.
         c.execute("UPDATE agent_runs SET token_hash='' WHERE id=?", (run_id,))
-        c.execute("UPDATE conversation_phases SET state='awaiting_answers',finished_at=? WHERE run_id=?", (now(), run_id))
-        c.execute("UPDATE conversations SET state='awaiting_answers' WHERE id=?", (p['conversation_id'],))
+        c.execute('UPDATE conversation_phases SET state=?,finished_at=? WHERE run_id=?', (state, now(), run_id))
+        c.execute('UPDATE conversations SET state=? WHERE id=?', (state, p['conversation_id']))
         store.add_event(c, 'agent.questions_captured', actor=actor, subject=('run', run_id),
                         metadata={'run_id': run_id, 'conversation_id': p['conversation_id'],
-                                  'question_ids': [row[0] for row in rows]})
+                                  'question_ids': [row[0] for row in rows], 'conversation_state': state})
+        if failure:
+            store.add_event(c, 'agent.search_strategy_rejected', actor=actor, status='error',
+                            subject=('run', run_id), metadata={'run_id': run_id, **failure}, error=failure['message'])
+        return {'state': state, 'strategy_validation': failure or {'status': 'passed' if strategy.get('enforced') else 'not_enforced'}}
+
+
+def _continuation_failure(store, phases, c):
+    """Independent of the mutable conversation label; no failed phase can be laundered."""
+    for p in phases:
+        run = store.run(p['run_id'], c)
+        if run.metadata.get('strategy_validation', {}).get('status') == 'failed':
+            return 'Search strategy failed. Questions are retained as evidence; start a new independent analysis.'
+        if run.status in {'failed', 'expired', 'interrupted'}:
+            return 'A conversation phase failed or was interrupted; inspect evidence before starting a new analysis.'
+    latest = phases[-1]
+    run = store.run(latest['run_id'], c)
+    if run.status != 'incomplete' or not run.metadata.get('awaiting_clarification'):
+        return 'The latest phase is not awaiting native clarification.'
+    return None
 
 
 def listing(store, conn=None):
@@ -167,6 +196,7 @@ def listing(store, conn=None):
                 # A killed worker cannot leave the product claiming it is running.
                 p['state'] = run.status if run.status in {'expired', 'interrupted', 'failed'} else p['state']
                 p['cost'] = json.loads(p['cost']) if p['cost'] else None
+                p['strategy_validation'] = run.metadata.get('strategy_validation')
                 p['questions'] = []
                 for q in c.execute('SELECT * FROM clarification_questions WHERE run_id=? ORDER BY ordinal', (p['run_id'],)):
                     question = dict(q)
@@ -178,9 +208,11 @@ def listing(store, conn=None):
             costs = [p['cost'] for p in item['phases']]
             known_cost = all(cost and not cost.get('failed') and cost.get('total') is not None for cost in costs)
             item['reported_total_cost'] = str(sum((_decimal(cost['total']) for cost in costs), Decimal(0))) if known_cost else None
-            item['continuation_blocker'] = None
+            item['continuation_blocker'] = _continuation_failure(store, item['phases'], c)
             if item['state'] == 'ready':
-                if len(item['phases']) >= item['max_turns']:
+                if item['continuation_blocker']:
+                    pass
+                elif len(item['phases']) >= item['max_turns']:
                     item['continuation_blocker'] = 'Conversation turn limit reached.'
                 elif sum(p['max_steps'] for p in item['phases']) >= item['max_total_steps']:
                     item['continuation_blocker'] = 'Conversation parent-step allowance exhausted.'
@@ -219,6 +251,9 @@ def answer(store, question_id, *, token, option=None, text=None):
                 return {'question_id': question_id, 'status': 'already_answered'}
             raise workflow.Conflict('question already answered; answers are immutable')
         p = phase(store, run.id, c)
+        phases = c.execute('SELECT * FROM conversation_phases WHERE conversation_id=? ORDER BY ordinal', (p['conversation_id'],)).fetchall()
+        if blocker := _continuation_failure(store, phases, c):
+            raise workflow.Conflict(blocker)
         state = c.execute('SELECT state FROM conversations WHERE id=?', (p['conversation_id'],)).fetchone()[0]
         if state != 'awaiting_answers':
             raise workflow.Conflict('conversation is not accepting answers')
@@ -255,6 +290,11 @@ def prepare_continuation(store, conversation_id, *, agent_id, connection, instru
                 agent_id, connection, hashlib.sha256(instructions).hexdigest()):
             raise workflow.Conflict('conversation configuration changed')
         phases = c.execute('SELECT * FROM conversation_phases WHERE conversation_id=? ORDER BY ordinal', (conversation_id,)).fetchall()
+        if blocker := _continuation_failure(store, phases, c):
+            raise workflow.Conflict(blocker)
+        questions = c.execute('SELECT * FROM clarification_questions WHERE run_id=? ORDER BY ordinal', (phases[-1]['run_id'],)).fetchall()
+        if not questions or any(q['answer'] is None for q in questions):
+            raise workflow.Conflict('native questions require recorded reviewer answers')
         if not 1 <= max_steps <= 40 or len(phases) >= conv['max_turns'] or sum(p['max_steps'] for p in phases) + max_steps > conv['max_total_steps']:
             raise workflow.Conflict('conversation step/turn budget exhausted')
         costs = [json.loads(p['cost']) if p['cost'] else None for p in phases]

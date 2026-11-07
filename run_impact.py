@@ -52,6 +52,14 @@ INSTRUCTIONS = ROOT / "agents" / "patch.md"
 DEFAULT_MAX_STEPS = 8
 
 
+def failure_diagnostics(exc):
+    """Bounded/redacted machine diagnostics; unknown exceptions expose only their type."""
+    if isinstance(exc, workflow.WorkflowError):
+        return config.safe_metadata({'error_type': type(exc).__name__, 'code': exc.code,
+                                     'message': str(exc), 'details': exc.details})
+    return {'error_type': type(exc).__name__}
+
+
 def build_prompt(policy_id: str, document_ids: list[str], run_id: str, run_token: str,
                  discovery: bool = False) -> str:
     if discovery:
@@ -146,6 +154,8 @@ async def continuation_thread_ready(client, store, conversation_id):
     conversation = next((c for c in clarification.listing(store) if c['id'] == conversation_id), None)
     if not conversation or conversation['state'] != 'ready':
         raise workflow.Conflict('conversation has unanswered questions or is not ready')
+    if conversation['continuation_blocker']:
+        raise workflow.Conflict(conversation['continuation_blocker'])
     p = conversation['phases'][-1]
     thread = await client.threads.get(conversation['thread_id'])
     if str(thread.id) != conversation['thread_id'] or not thread.messages:
@@ -213,7 +223,8 @@ async def paid_run(client: AsyncCominty, store: Store, agent_id: str, connection
             current = store.run(agent_run.id)
             if current.status == 'completed' or (current.status == 'incomplete'
                     and (current.metadata.get('finalization') == 'per_document_v1'
-                         or current.metadata.get('awaiting_clarification'))):
+                         or current.metadata.get('awaiting_clarification'))) or (
+                    current.status == 'failed' and current.metadata.get('native_questions_captured')):
                 return await work
         if task in done:
             await task
@@ -226,7 +237,8 @@ async def paid_run(client: AsyncCominty, store: Store, agent_id: str, connection
             workflow.close_run(store, agent_run.id,
                 status='interrupted' if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt))
                     else 'expired' if isinstance(exc, TimeoutError) else 'failed',
-                actor=actor, error=f'run aborted: {type(exc).__name__}')
+                actor=actor, error=f'run aborted: {type(exc).__name__}',
+                metadata={'failure_diagnostics': failure_diagnostics(exc)})
         raise
     finally:
         for pending in (task, work):
@@ -323,9 +335,13 @@ async def _paid_run(client: AsyncCominty, store: Store, agent_id: str, connectio
         # Capture paid evidence before creating proposals. Product state does not depend on this file.
         save()
         if questions and message.status.value == 'success':
-            clarification.capture(store, run_id, questions, actor=actor, metadata=metadata)
-            record.update(status='awaiting_answers', questions=[{'prompt': q.prompt, 'options': q.options} for q in questions])
+            outcome = clarification.capture(store, run_id, questions, actor=actor, metadata=metadata)
+            record.update(status=outcome['state'], strategy_validation=outcome['strategy_validation'],
+                          questions=[{'prompt': q.prompt, 'options': q.options} for q in questions])
             save()
+            if outcome['state'] == 'failed':
+                out(f'run {run_id}: native questions saved as evidence; search strategy failed; continuation blocked.')
+                return 1
             out(f'run {run_id}: native questions saved; awaiting reviewer answers and separately authorized continuation.')
             return 3
         summary = workflow.ingest_agent_reply(store, reply, actor=actor, provenance=provenance,
@@ -344,7 +360,8 @@ async def _paid_run(client: AsyncCominty, store: Store, agent_id: str, connectio
         out(f'Evidence saved to {path.relative_to(ROOT)}')
         return 0 if state.status == 'completed' and not summary['errors'] else 1
     except BaseException as exc:
-        record.update(error=type(exc).__name__, finished_at=datetime.now(UTC).isoformat())
+        diagnostic = failure_diagnostics(exc)
+        record.update(error=type(exc).__name__, failure_diagnostics=diagnostic, finished_at=datetime.now(UTC).isoformat())
         if run is not None and not terminal_received:
             record['cancellation'] = 'attempted'
             try:
@@ -354,7 +371,7 @@ async def _paid_run(client: AsyncCominty, store: Store, agent_id: str, connectio
                 record['cancellation'] = type(cancel_error).__name__
         try:
             clarification.evidence(store, run_id, 'failure', {
-                'error_type': type(exc).__name__, 'cancellation': record.get('cancellation'),
+                'error_type': type(exc).__name__, 'diagnostics': diagnostic, 'cancellation': record.get('cancellation'),
                 'dispatch_uncertain': run is None,
                 'message_id': str(run.message_id) if run is not None else None}, run_token=run_token)
         except Exception:

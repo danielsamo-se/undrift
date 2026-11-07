@@ -47,7 +47,9 @@ def score(store, root_id, truth, *, paraphrases=('web-003', 'bot-001'), evidence
         runs = [store.run(p['run_id'], c) for p in phases]
         latest = runs[-1]
         final = store.findings(run_id=latest.id, conn=c)
-        reconciled = latest.status == 'completed' or latest.metadata.get('finalization') == 'per_document_v1'
+        strategy_failed = any(r.metadata.get('strategy_validation', {}).get('status') == 'failed' for r in runs)
+        reconciled = not strategy_failed and (latest.status == 'completed' or (
+            latest.status == 'incomplete' and latest.metadata.get('finalization') == 'per_document_v1'))
         predicted = {f.document_id: f.category for f in final} if reconciled else {}
         observed = {f.document_id: f.category for f in final}
         docs = {d.id: d for d in store.documents(conn=c)}
@@ -95,8 +97,12 @@ def score(store, root_id, truth, *, paraphrases=('web-003', 'bot-001'), evidence
             'mcp_calls': dict(Counter(e.metadata.get('tool') for e in calls)),
             'mcp_error_count': sum(e.status != 'ok' for e in calls),
             'unattributed_mcp_calls': sum(e.metadata.get('run_id') not in phase_ids for e in calls),
+            'unattributed_scoped_mcp_calls': sum(e.metadata.get('run_id') not in phase_ids
+                and e.metadata.get('tool') != 'health_check' for e in calls),
             'search_queries': [e.metadata.get('query') for e in discovery if e.metadata.get('operation') == 'search_documents'],
             'search_strategy': latest.metadata.get('search_strategy') or runs[0].metadata.get('search_strategy'),
+            'strategy_validation': latest.metadata.get('strategy_validation'),
+            'continuation_blocker': conversation['continuation_blocker'],
             'retrieval_document_ids': sorted(retrieved_ids), 'final_retrieval_complete': retrievals[-1]['complete'],
             'reported_cost': str(reported_cost) if reported_cost is not None else None, 'cost_reporting_complete': cost_complete,
             'duration_s': sum(r.metadata.get('duration_s', (r.closed_at-r.created_at).total_seconds() if r.closed_at else 0) for r in runs),

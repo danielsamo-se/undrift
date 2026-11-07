@@ -13,6 +13,7 @@ from importlib.metadata import version
 import json
 import logging
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -44,6 +45,61 @@ HOST = 'chatter-poker-theorize.ngrok-free.dev'
 CONNECTION = 'undrift_mcp_ngrok'
 MODEL = 'Claude Sonnet 5.5 (High)'
 TOOLS = {'health_check','get_policy','get_document','list_channels','search_documents','similar_documents','record_finding'}
+SERIES = 'reliability-v1'
+LIFECYCLE = 'native_evidence_independent_v2'
+
+
+def select_series(name):
+    """Separate study identity from the backwards-compatible report JSON schema."""
+    if not re.fullmatch(r'reliability-v[1-9][0-9]*', name):
+        raise ValueError('Expected a versioned series name such as reliability-v2')
+    global SERIES, PRIVATE, PLAN, ACTIVE, PROTOCOL, REPORT
+    SERIES = name
+    PRIVATE = ROOT / '.tools' / name
+    PLAN, ACTIVE = PRIVATE / 'plan.json', PRIVATE / 'active.json'
+    PROTOCOL = ROOT / 'evaluations' / (name + '-protocol.json')
+    REPORT = ROOT / 'evaluations' / (name + '-results.json')
+
+
+def require(condition, message):
+    if not condition:
+        raise RuntimeError(message)
+
+
+def check_trial(measured, *, domain_unchanged=True):
+    """Quality failures stay in scores; trust/evidence failures stop the entire series."""
+    require(measured['protected_automation_safe'], 'Protected-channel automation violation')
+    require(measured['native_question_integrity'], 'Provider/native-question persistence mismatch')
+    require(measured['mcp_error_count'] == 0, 'MCP validation/authentication failure')
+    # health_check is deliberately unscoped; it is not retrieval/finding evidence.
+    require(measured.get('unattributed_scoped_mcp_calls', measured['unattributed_mcp_calls']) == 0,
+            'Unattributed scoped MCP activity')
+    require(domain_unchanged, 'Seeded policy/document state changed')
+
+
+def provider_evidence(run, thread, message):
+    return {'run_id': run.id, 'thread_id': str(thread.id), 'message_id': str(message.id),
+            'status': message.status.value, 'live': message.live,
+            'questions': [{'prompt': q.prompt, 'options': q.options} for q in (message.questions or [])],
+            'content_sha256': hashlib.sha256((message.content or '').encode()).hexdigest()}
+
+
+def check_provider(snapshot, terminals):
+    require(bool(terminals) and terminals[-1].get('questions') == snapshot['questions'],
+            'Provider terminal/native-question evidence mismatch')
+    require(snapshot['status'] == 'success' and not snapshot['live'], 'Provider execution failed or remains live')
+
+
+def stop_diagnostic(exc):
+    """Never emit an empty assertion reason, unknown exception text, or credentials."""
+    diagnostic = run_impact.failure_diagnostics(exc)
+    if isinstance(exc, (AssertionError, RuntimeError)) and str(exc):
+        diagnostic['message'] = config.safe_text(str(exc))
+    tb = exc.__traceback__
+    if tb:
+        while tb.tb_next: tb = tb.tb_next
+        diagnostic['location'] = {'file': Path(tb.tb_frame.f_code.co_filename).name, 'line': tb.tb_lineno}
+    return diagnostic
 
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, default=str).encode()).hexdigest()
@@ -79,8 +135,10 @@ def prepare(ui):
     assert not PLAN.exists() and not PROTOCOL.exists() and not REPORT.exists()
     config.load_env()
     ui = ui.resolve(); assert ui.is_relative_to((ROOT / '.test-tmp').resolve()) and (ui/'index.html').is_file()
-    archives = [p for p in (ROOT/'data').iterdir() if p.is_file() and (p.suffix=='.db' or p.name.endswith('.db-wal'))]
+    archives = [p for p in (ROOT/'data').rglob('*') if p.is_file() and (p.suffix=='.db' or p.name.endswith('.db-wal'))]
     archives += list((ROOT/'runs').glob('impact_*.json'))
+    archives += [p for p in (ROOT/'evaluations').glob('*') if p.is_file()]
+    archives += [p for p in (ROOT/'.tools').glob('reliability-v*/*') if p.is_file() and p.suffix in {'.json','.lock'}]
     archives += [ROOT/'.env', ROOT/'tests/data/discovery_ground_truth.json', ROOT/'agents/discovery.md']
     protection = {str(p.relative_to(ROOT)): file_hash(p) for p in archives}
     answers = {'version':'unavailable-facts-v1', 'answers':{did:{'text':'I cannot establish this fact'} for did in
@@ -88,16 +146,16 @@ def prepare(ui):
     write(PRIVATE/'answers.v1.json', answers, True)
     slots = []
     for number in range(1,6):
-        path = ROOT / f'data/reliability-v1/evaluation-{number:02}.db'
+        path = ROOT / f'data/{SERIES}/evaluation-{number:02}.db'
         store = create_demo(path)
-        slots.append({'slot':number, 'database':str(path.relative_to(ROOT)).replace('\\','/'),
+        slots.append({'slot':number, 'series_id':SERIES, 'database':str(path.relative_to(ROOT)).replace('\\','/'),
             'database_id':store.identity(), 'seed_sha256':seed_hash(), 'domain':domain(store),
             'ui_directory':str(ui.relative_to(ROOT)).replace('\\','/'), 'public_host':HOST})
     assert len({s['database_id'] for s in slots}) == 5 and all(s['domain']==slots[0]['domain'] for s in slots)
-    plan = {'version':reliability.VERSION, 'slots':slots, 'protected_files':protection,
+    plan = {'version':reliability.VERSION, 'series_id':SERIES, 'lifecycle':LIFECYCLE, 'slots':slots, 'protected_files':protection,
             'answers_sha256':file_hash(PRIVATE/'answers.v1.json'), 'created_at':datetime.now(UTC).isoformat()}
     write(PLAN, plan, True); write(ACTIVE, slots[0])
-    write(REPORT, {'version':reliability.VERSION,'state':'prepared','evidence_kind':'real_cominty_evaluation',
+    write(REPORT, {'version':reliability.VERSION,'series_id':SERIES,'state':'prepared','evidence_kind':'real_cominty_evaluation',
         'results':[],'aggregate':reliability.aggregate([]), 'stop_reason':None})
     print('Prepared five distinct deterministic stores and private versioned answers; no agent executed.')
 
@@ -139,7 +197,7 @@ async def attestation(store):
         tunnels=(await web.get('http://127.0.0.1:4040/api/tunnels')).json()['tunnels']
         tunnel=next(t for t in tunnels if t['public_url']=='https://'+HOST)
         assert tunnel['config']['inspect'] is False and tunnel['config']['addr']=='http://127.0.0.1:8001'
-        for path in ['/.tools/reliability-v1/answers.v1.json','/tests/data/discovery_ground_truth.json']:
+        for path in [f'/.tools/{SERIES}/answers.v1.json','/tests/data/discovery_ground_truth.json']:
             assert (await web.get('https://'+HOST+path)).status_code==404
     return metadata
 
@@ -147,7 +205,7 @@ async def freeze():
     plan=json.loads(PLAN.read_text(encoding='utf-8')); configure(plan['slots'][0])
     assert not PROTOCOL.exists()
     metadata=await attestation(Store(ROOT/plan['slots'][0]['database']))
-    protocol={'version':reliability.VERSION,'frozen_at':datetime.now(UTC).isoformat(), 'remote':metadata,
+    protocol={'version':reliability.VERSION,'series_id':SERIES,'lifecycle':LIFECYCLE,'frozen_at':datetime.now(UTC).isoformat(), 'remote':metadata,
         'instructions_raw_sha256':file_hash(ROOT/'agents/discovery.md'), 'corpus_sha256':digest(manifest()),
         'seed_sha256':seed_hash(), 'rubric_sha256':file_hash(TRUTH), 'answer_fixture_version':'unavailable-facts-v1',
         'answer_fixture_sha256':plan['answers_sha256'], 'source_sha256':{p:file_hash(ROOT/p) for p in SOURCES},
@@ -156,6 +214,8 @@ async def freeze():
         'paraphrase_documents':['web-003','bot-001'], 'scoring':'Reconciled labels only; missing labels count as misses. Native question recall is separate.',
         'undefined_precision':'null; aggregates display defined_count and never invent precision for empty predictions.',
         'continuation_policy':'Only for actual native questions, with the private fixed factual answers; no third turn.',
+        'quality_failure_policy':'Search-contract failure is terminal for that conversation, with no answers/continuation or reconciled labels. Retain it in all denominators; proceed to the next independent slot only if trust/provider/isolation checks pass.',
+        'batch_stop_policy':'Stop on safety, authentication, isolation, provider/evidence inconsistency, unknown cost, interruption or spending/message limits.',
         'sdk_version':version('cominty-sdk'),
         'steps_measurement':'Reserved parent allowance plus unique llm correlation IDs; no exact consumed-step API.'}
     write(PROTOCOL,protocol,True)
@@ -212,12 +272,13 @@ async def wait_service(slot):
 async def execute():
     protocol=json.loads(PROTOCOL.read_text(encoding='utf-8')); plan=json.loads(PLAN.read_text(encoding='utf-8'))
     lock=PRIVATE/'execution.lock'
+    if lock.exists():
+        raise FileExistsError('Evaluation execution already attempted; no retry')
+    require(protocol.get('lifecycle') == LIFECYCLE and protocol.get('series_id') == SERIES
+            and plan.get('series_id') == SERIES, 'Lifecycle/source changes require a fresh versioned evaluation series')
     with lock.open('x') as f: f.write(datetime.now(UTC).isoformat())
-    assert_frozen(protocol,plan)
-    answers=json.loads((PRIVATE/'answers.v1.json').read_text(encoding='utf-8'))['answers']
-    truth=json.loads(TRUTH.read_text(encoding='utf-8'))
     results=[]; attempts=[]; total=Decimal(0); cost_known=True
-    report={'version':reliability.VERSION,'state':'executing','evidence_kind':'real_cominty_evaluation',
+    report={'version':reliability.VERSION,'series_id':SERIES,'state':'executing','evidence_kind':'real_cominty_evaluation',
             'protocol_sha256':file_hash(PROTOCOL),'protocol':protocol,'results':results,'stop_reason':None}
     def persist():
         report.update(results=results,aggregate=reliability.aggregate(results),attempted_paid_messages=len(attempts),
@@ -273,7 +334,7 @@ async def execute():
         try:
             with (PRIVATE/f"slot-{slot['slot']}-phase-{number}.log").open('x',encoding='utf-8') as log:
                 with contextlib.redirect_stdout(log),contextlib.redirect_stderr(log): code=await run_impact.main()
-        except BaseException as exc: error=type(exc).__name__
+        except BaseException as exc: error=stop_diagnostic(exc)
         finally: run_impact.AsyncCominty=original
         new=[r for r in store.runs() if r.id not in before]
         if not new:
@@ -285,22 +346,24 @@ async def execute():
         if cost and not cost.get('failed') and cost.get('total') is not None:
             total+=Decimal(str(cost['total']))
         else: cost_known=False
-        attempt.update(exit_code=code,error_type=error,cost=cost,run_id=run.id,state='finished')
+        attempt.update(exit_code=code,error=error,cost=cost,run_id=run.id,state='finished')
         write(PRIVATE/f"completion-{slot['slot']}-{number}.json",attempt,True)
         # Capture actual terminal provider state through read-only metadata.
         async with ReadOnlyCominty(timeout=25) as remote:
             remote_thread=await remote.threads.get(run.thread_id)
             remote_message=next(m for m in remote_thread.messages if str(m.id)==run.message_id)
-            raw_questions=[{'prompt':q.prompt,'options':q.options} for q in (remote_message.questions or [])]
             with store.read() as c:
                 terminals=[json.loads(r[0]) for r in c.execute("SELECT payload FROM conversation_evidence WHERE run_id=? AND kind='terminal'",(run.id,))]
-            assert terminals and terminals[-1]['questions']==raw_questions
-            assert remote_message.status.value=='success' and not remote_message.live, 'Provider execution failed or remains live'
-            write(PRIVATE/f"provider-{slot['slot']}-{number}.json",{'run_id':run.id,'thread_id':str(remote_thread.id),
-                'message_id':str(remote_message.id),'status':remote_message.status.value,'questions':raw_questions,
-                'content_sha256':hashlib.sha256((remote_message.content or '').encode()).hexdigest()},True)
+            snapshot=provider_evidence(run,remote_thread,remote_message)
+            # Preserve the actual observation BEFORE rejecting inconsistent state.
+            write(PRIVATE/f"provider-{slot['slot']}-{number}.json",snapshot,True)
+            check_provider(snapshot,terminals)
+        require(error is None, 'Local execution interrupted or failed; inspect completion diagnostics')
         return root
     try:
+        assert_frozen(protocol,plan)
+        answers=json.loads((PRIVATE/'answers.v1.json').read_text(encoding='utf-8'))['answers']
+        truth=json.loads(TRUTH.read_text(encoding='utf-8'))
         for slot in plan['slots']:
             budget(); assert_frozen(protocol,plan)
             configure(slot); store=Store(ROOT/slot['database'])
@@ -311,8 +374,7 @@ async def execute():
             measured.update(slot=slot['slot'],database=slot['database'],database_id=slot['database_id'])
             measured['message_count']=sum(a['slot']==slot['slot'] for a in attempts)
             results.append(measured); persist()
-            assert measured['protected_automation_safe'] and measured['native_question_integrity']
-            assert measured['mcp_error_count']==0, 'MCP validation/authentication failure; batch stopped'
+            check_trial(measured,domain_unchanged=domain(store)==slot['domain'])
             conv=next(v for v in clarification.listing(store) if v['id']==root)
             if conv['state']=='awaiting_answers':
                 budget()
@@ -324,16 +386,16 @@ async def execute():
                 measured.update(slot=slot['slot'],database=slot['database'],database_id=slot['database_id'])
                 measured['message_count']=sum(a['slot']==slot['slot'] for a in attempts)
                 results[-1]=measured; persist()
-            assert measured['protected_automation_safe'] and measured['native_question_integrity']
-            assert measured['mcp_error_count']==0 and domain(store)==slot['domain']
+            check_trial(measured,domain_unchanged=domain(store)==slot['domain'])
             assert_frozen(protocol,plan)
             print(f"Evaluation {slot['slot']}/5: status={measured['status']} reconciled={measured['reconciled']} cost={measured['reported_cost']}",flush=True)
         report['state']='completed'
     except BaseException as exc:
         report['state']='stopped'
-        report['stop_reason']=str(exc) if isinstance(exc,AssertionError) else type(exc).__name__
+        report['stop_diagnostic']=stop_diagnostic(exc)
+        report['stop_reason']=report['stop_diagnostic'].get('message') or type(exc).__name__
         # Preserve a partially executed conversation even if a safety/provider check stopped it.
-        for slot in plan['slots']:
+        for slot in plan['slots'] if 'truth' in locals() else []:
             store=Store(ROOT/slot['database'])
             for conv in clarification.listing(store):
                 item=reliability.score(store,conv['id'],truth,evidence_kind='real_cominty' if any(a.get('run_id')==conv['id'] for a in attempts) else 'local_preflight_failure')
@@ -352,8 +414,10 @@ if __name__=='__main__':
     parser.add_argument('action',choices=['prepare','freeze','recover-preflight','execute'])
     parser.add_argument('--ui-dir',type=Path)
     parser.add_argument('--paid',action='store_true')
+    parser.add_argument('--series',required=True,help='Fresh versioned study identity, e.g. reliability-v2; never reuse a paid series')
     args=parser.parse_args()
     try:
+        select_series(args.series)
         if args.action=='prepare': prepare(args.ui_dir)
         elif args.action=='freeze': asyncio.run(freeze())
         elif args.action=='recover-preflight': asyncio.run(recover_preflight())

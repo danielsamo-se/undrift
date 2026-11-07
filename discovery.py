@@ -13,6 +13,11 @@ WORD = re.compile(r'\w+', re.UNICODE)
 STOP = frozenset('a an and are as at be by can for from in is it of on or our the this to within with your'.split())
 
 
+class SearchStrategyViolation(workflow.WorkflowError):
+    """Execution-quality failure, distinct from invalid or unauthorized evidence."""
+    code = 'search_strategy_violation'
+
+
 def tokens(text):
     return [w for w in WORD.findall(text.casefold()) if w not in STOP]
 
@@ -164,5 +169,5 @@ def validate_search_strategy(store, run, conn):
         'search_calls': counts['search_documents'], 'similarity_calls': counts['similar_documents']}
     if (len(distinct) < 3 or not observed['number_free_query'] or not observed['catalog_complete']
             or not (lead_followed or no_leads) or counts['search_documents'] > 12 or counts['similar_documents'] > 4):
-        raise workflow.WorkflowError('discovery search-first contract was not satisfied', observed=observed)
+        raise SearchStrategyViolation('discovery search-first contract was not satisfied', observed=observed)
     return observed

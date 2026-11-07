@@ -1,5 +1,11 @@
 # Reliability evaluation v1
 
+This page records the original v1 study, which remains unchanged. For the lifecycle
+fix and the required **new** series procedure, see
+[Native evidence and search certification](CLARIFICATION_LIFECYCLE.md).
+The current CLI requires an explicit `--series` argument; the historical v1 commands
+below are not instructions to retry its paid execution.
+
 Five independent deterministic Shiftly conversations, each with at most one native
 question continuation. This development evaluation is separate from the earlier
 discovery/clarification demonstrations. Their databases and traces are archives.

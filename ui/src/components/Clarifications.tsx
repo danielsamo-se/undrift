@@ -32,7 +32,7 @@ function Question({ question, ready, onAnswered }: { question: NativeQuestion; r
       </label>)}
       <label className="field"><span>Or provide factual context</span><textarea value={text} maxLength={4000}
         disabled={!ready || busy} onChange={e => { setChoice(null); setText(e.target.value); }} /></label>
-      {!session ? <button className="btn" onClick={() => setUnlock(true)}>Unlock reviewer session to answer</button> :
+      {!ready ? <p className="muted small">Question retained as evidence. This phase is not accepting answers.</p> : !session ? <button className="btn" onClick={() => setUnlock(true)}>Unlock reviewer session to answer</button> :
         <button className="btn btn-primary" disabled={!ready || busy || (choice === null && !text.trim())}
           onClick={() => void submit()}>{busy ? 'Saving…' : 'Save factual answer'}</button>}
     </>}
@@ -48,6 +48,8 @@ export function ConversationQuestions({ conversation, reload }: { conversation: 
       {conversation.max_total_steps} total reserved parent steps · reported cost ceiling {conversation.max_reported_cost} (platform units).</p>
     <p className="muted small">Factual answers do not approve corrections or authorize paid execution.
       Once all answers are saved, an operator must separately authorize one continuation in the same Cominty conversation.</p>
+    {['failed', 'expired', 'interrupted'].includes(conversation.state) && conversation.continuation_blocker &&
+      <p role="alert">Continuation blocked: {conversation.continuation_blocker}</p>}
     {conversation.phases.map(phase => <div key={phase.run_id}>
       <p className="muted small">Phase {phase.ordinal} · {phase.state.replaceAll('_', ' ')} · {phase.run_id}
         {phase.cost && ` · reported cost ${phase.cost.total ?? 'unavailable'}`}</p>

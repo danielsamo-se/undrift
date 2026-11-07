@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import sys
 
@@ -11,6 +12,17 @@ sys.path.insert(0, str(ROOT))
 import config
 from store import Store
 
+
+def series_paths(active):
+    # Legacy service configs remain readable, but new studies have explicit IDs.
+    series = active.get('series_id', 'reliability-v1')
+    if not re.fullmatch(r'reliability-v[1-9][0-9]*', series):
+        raise ValueError('invalid evaluation series')
+    database = (ROOT / active['database']).resolve()
+    if not database.is_relative_to((ROOT / 'data' / series).resolve()) or not database.is_file():
+        raise ValueError('evaluation database is outside the selected series')
+    return database, ROOT / 'evaluations' / (series + '-results.json')
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('service', choices=['api','mcp'])
@@ -18,8 +30,7 @@ def main():
     args = parser.parse_args()
     config.load_env()
     active = json.loads(args.config.read_text(encoding='utf-8'))
-    database = (ROOT / active['database']).resolve()
-    assert database.is_relative_to((ROOT / 'data/reliability-v1').resolve()) and database.is_file()
+    database, report = series_paths(active)
     store = Store(database)
     assert store.identity() == active['database_id']
     assert store.metadata('seed_sha256') == active['seed_sha256']
@@ -28,7 +39,7 @@ def main():
         UNDRIFT_EXPECTED_MODEL='Claude Sonnet 5.5 (High)', UNDRIFT_MCP_DISCOVERY='1',
         UNDRIFT_MCP_FINDINGS='1', UNDRIFT_MCP_FINDINGS_PUBLIC='1', UNDRIFT_MCP_WRITE_TOOLS='0',
         UNDRIFT_GITHUB_REPOSITORY='', UNDRIFT_PUBLISH_CREDENTIAL_FILE='', UNDRIFT_PUBLISH_DB=str(database),
-        UNDRIFT_RELIABILITY_REPORT=str(ROOT / 'evaluations/reliability-v1-results.json'))
+        UNDRIFT_RELIABILITY_REPORT=str(report))
     ui = (ROOT / active['ui_directory']).resolve()
     assert ui.is_relative_to((ROOT / '.test-tmp').resolve()) and (ui / 'index.html').is_file()
     runtime = {'pid': os.getpid(), 'service': args.service, **active}

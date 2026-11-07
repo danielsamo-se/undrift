@@ -71,3 +71,16 @@ it('shows exhausted continuation budgets instead of promising execution', () => 
   expect(screen.getByRole('alert').textContent).toContain('Conversation turn limit reached.');
   expect(screen.queryByRole('status')).toBeNull();
 });
+
+it('retains failed native questions as evidence without inviting answers or unlock', () => {
+  const conv = conversation();
+  conv.state = 'failed';
+  conv.phases[0]!.state = 'failed';
+  conv.continuation_blocker = 'Search strategy failed. Start a new independent analysis.';
+  render(<ConversationQuestions conversation={conv} reload={vi.fn()} />);
+  expect(screen.getByRole('alert').textContent).toContain('Search strategy failed');
+  expect(screen.getByText(/What did the offer promise/)).toBeTruthy();
+  expect(screen.getByText('Refer to original terms.')).toBeTruthy();
+  expect(screen.getAllByRole('radio').every(radio => (radio as HTMLInputElement).disabled)).toBe(true);
+  expect(screen.queryByRole('button', { name: /Unlock|Save factual|continue/i })).toBeNull();
+});

@@ -31,8 +31,12 @@ After a successful terminal message, the runner inspects native questions BEFORE
 JSON ingestion. Native prompts must use `[document:<id>;version:<version>]` and
 refer to a policy/document actually retrieved through that phase's scoped MCP
 capability. `clarification.capture` validates scope, versions, text/option bounds,
-credential exclusion and the actual search-first audit, then atomically records
-questions, closes the phase as incomplete and revokes its run-token hash. No
+credential exclusion, then independently assesses the actual search-first audit.
+Admissible questions are atomically retained even if that audit fails. A passing
+audit closes the phase as incomplete; a failing audit closes the run and
+conversation as failed and blocks answers/continuation. Both revoke the run-token
+hash. See [lifecycle correction and new evaluation procedure](CLARIFICATION_LIFECYCLE.md).
+No
 lease or bearer credential remains live while waiting for a person. The terminal
 turn is not called a completed analysis, and no proposal is created from it.
 An initial native question requires real document context; failed retrieval still

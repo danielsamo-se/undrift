@@ -936,6 +936,12 @@ def ingest_agent_reply(store: Store, reply: str, *, actor: str,
                            metadata={'run_id': run_id, **diagnostic}, error=str(exc))
         current_run = store.run(run_id)
         if current_run and current_run.status == 'open':
-            close_run(store, run_id, status='incomplete', actor=actor, provenance=provenance,
-                      metadata=metadata, error=str(exc))
+            from discovery import SearchStrategyViolation
+            strategy_failure = isinstance(exc, SearchStrategyViolation)
+            failure_metadata = {**(metadata or {}), 'failure_diagnostics': diagnostic}
+            if strategy_failure:
+                failure_metadata.update(search_strategy=exc.details['observed'], strategy_validation={
+                    'status': 'failed', 'code': exc.code, 'message': str(exc), 'details': exc.details})
+            close_run(store, run_id, status='failed' if strategy_failure else 'incomplete', actor=actor, provenance=provenance,
+                      metadata=failure_metadata, error=str(exc))
     return summary

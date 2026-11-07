@@ -3,7 +3,9 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $python = Join-Path $root '.venv\Scripts\python.exe'
 $activePath = (Resolve-Path -LiteralPath $Config).Path
-if (-not $activePath.StartsWith((Join-Path $root '.tools\reliability-v1\'))) { throw 'Unapproved evaluation configuration path.' }
+$privateRoot = (Join-Path $root '.tools') + '\'
+if (-not $activePath.StartsWith($privateRoot) -or
+    $activePath.Substring($privateRoot.Length) -notmatch '^reliability-v[1-9][0-9]*\\active\.json$') { throw 'Unapproved evaluation configuration path.' }
 $active = Get-Content -LiteralPath $activePath -Raw | ConvertFrom-Json
 $targets = @(@{service='mcp';port=8001}, @{service='api';port=8401})
 $owners = @{}
@@ -21,6 +23,14 @@ foreach ($target in $targets) {
     $runtimePath = Join-Path (Split-Path -Parent $activePath) ($target.service + '-runtime.json')
     if (Test-Path -LiteralPath $runtimePath) {
         $runtime = Get-Content -LiteralPath $runtimePath -Raw | ConvertFrom-Json
+        $expectedOwner = $runtime.pid
+    } elseif ($owner.CommandLine -match 'evaluation_service\.py"?\s+\w+\s+--config\s+"([^"]+)"') {
+        # A new series may take over the same two ports only from the recorded
+        # owner of the previous series. Never fall back to a guessed process ID.
+        $priorConfig = $Matches[1]
+        if (-not $priorConfig.StartsWith($privateRoot) -or
+            $priorConfig.Substring($privateRoot.Length) -notmatch '^reliability-v[1-9][0-9]*\\active\.json$') { throw 'Unapproved previous evaluation configuration.' }
+        $runtime = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $priorConfig) ($target.service + '-runtime.json')) -Raw | ConvertFrom-Json
         $expectedOwner = $runtime.pid
     } else {
         $runtime = Get-Content -LiteralPath (Join-Path $root ('.tools\clarification-' + $target.service + '-runtime.json')) -Raw | ConvertFrom-Json

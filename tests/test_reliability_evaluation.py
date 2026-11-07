@@ -161,7 +161,7 @@ def test_preflight_recovery_refuses_any_paid_attempt(tmp_path,monkeypatch):
     with pytest.raises(AssertionError): asyncio.run(evaluator.recover_preflight())
 
 
-def test_catalog_before_lead_reproduces_observed_capture_failure_without_regrading(demo):
+def test_catalog_before_lead_preserves_questions_without_certifying_or_regrading(demo, token):
     import discovery
     from test_clarification import native
     run,secret=workflow.open_run(demo,'shiftly-returns',['doc-001','help-002'],actor='test',agent_id='impact',
@@ -173,14 +173,24 @@ def test_catalog_before_lead_reproduces_observed_capture_failure_without_regradi
     discovery.search_documents(demo,run_id=run.id,run_token=secret,query='',limit=25)
     retrieve(demo,run,secret)
     clarification.evidence(demo,run.id,'terminal',{'status':'success','questions':[native().model_dump()]})
-    with pytest.raises(workflow.WorkflowError) as caught:
-        clarification.capture(demo,run.id,[native()],actor='test',metadata={})
-    assert caught.value.details['observed']['lead_followed'] is False
-    assert clarification.listing(demo)[0]['phases'][0]['questions']==[]
-    workflow.close_run(demo,run.id,status='failed',actor='test',error='Native capture rejected')
+    clarification.capture(demo,run.id,[native()],actor='test',metadata={})
+    state=demo.run(run.id)
+    assert state.status=='failed'
+    assert state.metadata['strategy_validation']['details']['observed']['lead_followed'] is False
+    assert 'finalization' not in state.metadata and not demo.proposals()
+    conv=clarification.listing(demo)[0]
+    [question]=conv['phases'][0]['questions']
+    assert question['prompt']==native().prompt and question['options']==native().options
+    assert conv['state']=='failed' and conv['continuation_blocker']
+    with pytest.raises(workflow.Conflict): clarification.answer(demo,question['id'],token=token,option=1)
+    with pytest.raises(workflow.Conflict):
+        clarification.prepare_continuation(demo,run.id,agent_id='impact',connection='connection',instructions=INSTRUCTIONS,max_steps=20)
+    with pytest.raises(workflow.Unauthorized):
+        with demo.read() as c: workflow.authorize_run(demo,run.id,secret,c)
     clarification.finish(demo,run.id)
     scored=reliability.score(demo,run.id,TRUTH)
-    assert not scored['native_question_integrity'] and scored['metrics']['accuracy']==0
+    assert scored['native_question_integrity'] and scored['metrics']['accuracy']==0
+    assert not scored['reconciled'] and scored['metrics']['native_clarification_recall']==.2
     with demo.read() as c:
         terminal=json.loads(c.execute("SELECT payload FROM conversation_evidence WHERE kind='terminal'").fetchone()[0])
     assert len(terminal['questions'])==1  # Actual emission evidence survives the rejection.
