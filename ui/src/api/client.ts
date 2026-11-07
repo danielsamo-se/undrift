@@ -14,6 +14,7 @@ import type {
   Conversation,
   ReliabilityReport,
   AutonomySnapshot, AutonomyPolicy, AutonomyMode,
+  GuardOverview, GuardCheck,
 } from "./types";
 
 export class ApiError extends Error {
@@ -83,6 +84,9 @@ function authorized<T>(path: string, body: unknown): Promise<T> {
 const enc = encodeURIComponent;
 
 export const api = {
+  guard: (signal?: AbortSignal) => request<GuardOverview>('/api/guard', { signal }),
+  guardCheck: (body: { candidate: string; channel_id: string; evidence_document_ids: string[]; facts: string[]; confirm_paid: boolean }) =>
+    authorized<{ check: GuardCheck }>('/api/guard/checks', body),
   autonomy: (signal?: AbortSignal) => request<AutonomySnapshot>('/api/autonomy', { signal }),
   configureAutonomy: (channel: string, body: { expected_version: number; mode: AutonomyMode; max_per_run: number; note: string }) =>
     authorized<{ policy: AutonomyPolicy }>(`/api/autonomy/${enc(channel)}`, body),

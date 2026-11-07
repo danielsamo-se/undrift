@@ -274,6 +274,27 @@ export interface ProposalDetail {
   };
 }
 
+export type GuardDecision = 'ALLOW' | 'NEEDS_REVIEW' | 'BLOCK';
+export type GuardSource = 'cominty_guard' | 'deterministic_precheck' | 'fail_closed' | 'channel_boundary' | 'test_fixture';
+export interface GuardFinding { claim: string | null; assessment: string | null; evidence_refs: string[]; reason: string | null }
+export interface GuardCheck {
+  id: string; database_id: string; created_at: string; requested_by: string;
+  input_contract: string; output_contract: string; channel_id: string;
+  candidate_sha256: string; candidate_length: number; candidate_redacted: string; case_sha256: string;
+  policy_id: string; policy_version: number;
+  evidence: { ref: string; document_id: string; channel_id: string; version: number; sha256: string }[];
+  facts: { ref: string; sha256: string; statement_redacted: string }[];
+  precheck: { verdict: 'CLEAR' | 'NEEDS_REVIEW' | 'BLOCK'; findings: { rule: string; verdict: string; sentence: string; reason: string }[] };
+  execution: { mode: string; status: string; source: string; error: string | null; agent_id: string | null; thread_id: string | null; message_id: string | null };
+  agent_output: { verdict: string | null; findings: GuardFinding[]; uncertainty: string | null } | null;
+  verification: { ok: boolean; problems: string[]; stale: string[] };
+  decision: GuardDecision; decision_source: GuardSource; release_eligible: boolean; reasons: string[];
+}
+export interface GuardOverview {
+  executor: { mode: 'disabled' | 'cominty' | string; paid: boolean; agent_configured: boolean; input_contract: string; output_contract: string };
+  journal_configured: boolean; checks: GuardCheck[]; sends_or_publishes: false;
+}
+
 export type AutonomyMode = 'review_required' | 'bounded_auto' | 'pull_request' | 'manual_only';
 export interface AutonomyPolicy extends Channel {
   channel_id: string; version: number; mode: AutonomyMode; effective_mode: AutonomyMode;

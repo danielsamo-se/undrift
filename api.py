@@ -29,6 +29,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 import config
 import clarification
 import autonomy
+import guard
 import readmodel
 import workflow
 from store import Store
@@ -66,6 +67,15 @@ class PolicyChangeBody(BaseModel):
     voluntary_return_days: int
     effective_from: date
     description: str = Field(min_length=1, max_length=4000)
+
+
+class GuardBody(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    candidate: str = Field(min_length=1, max_length=guard.MAX_CANDIDATE)
+    channel_id: str = Field(min_length=1, max_length=64)
+    evidence_document_ids: list[str] = Field(default_factory=list, max_length=guard.MAX_EVIDENCE)
+    facts: list[str] = Field(default_factory=list, max_length=guard.MAX_FACTS)
+    confirm_paid: bool = False
 
 
 class AutonomyBody(BaseModel):
@@ -154,7 +164,12 @@ def _legacy_proposal_evidence(proposal: Any, store: Store, runs_dir: Path) -> st
 
 
 def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
-              ui_dir: Path | None = UI_DIST, publisher=None) -> ASGIApp:
+              ui_dir: Path | None = UI_DIST, publisher=None, guard_journal=None,
+              guard_executor=None) -> ASGIApp:
+    if guard_journal is None and os.environ.get('UNDRIFT_GUARD_DB', '').strip():
+        guard_journal = guard.GuardJournal(os.environ['UNDRIFT_GUARD_DB'].strip())
+    if guard_executor is None:
+        guard_executor = guard.executor_from_env()
     async def health(_: Request) -> JSONResponse:
         return JSONResponse({"status": "ok", "database": store.path.name,
                              "database_id": await run_in_threadpool(store.identity)})
@@ -290,6 +305,31 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
                                            ("session", "reviewer"))
         return JSONResponse({"reviewer": reviewer})
 
+    async def guard_overview(_: Request) -> JSONResponse:
+        def current():
+            checks = guard_journal.list(store.identity()) if guard_journal else []
+            return {'executor': guard.executor_status(guard_executor), 'journal_configured': guard_journal is not None,
+                    'checks': checks, 'sends_or_publishes': False}
+        return JSONResponse(await run_in_threadpool(current))
+
+    async def guard_check(request: Request) -> JSONResponse:
+        cid = request.path_params['check_id']
+        found = await run_in_threadpool(lambda: guard_journal.get(cid, store.identity()) if guard_journal else None)
+        if found is None:
+            raise workflow.NotFound(f'unknown guard check {cid!r}')
+        return JSONResponse({'check': found})
+
+    async def guard_run(request: Request) -> JSONResponse:
+        # Authenticate before parsing; Guard validation never sends or publishes anything.
+        reviewer = await run_in_threadpool(workflow.authorize, store, _token(request), 'guard.check',
+                                           ('guard', 'request'))
+        body = await _body(request, GuardBody)
+        if guard_journal is None:
+            raise workflow.Conflict('Guard audit journal is not configured for this service')
+        result = await run_in_threadpool(lambda: guard.run_check(
+            store, guard_journal, guard_executor, requested_by=reviewer, **body.model_dump()))
+        return JSONResponse({'check': result}, status_code=201)
+
     async def autonomy_settings(request: Request) -> JSONResponse:
         if request.method=='POST':
             # Authenticate before parsing or inspecting a channel.
@@ -372,6 +412,9 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
     app = Starlette(
         routes=[
             Route("/api/health", health),
+            Route('/api/guard', guard_overview),
+            Route('/api/guard/checks', guard_run, methods=['POST']),
+            Route('/api/guard/checks/{check_id}', guard_check),
             Route('/api/autonomy',autonomy_settings),
             Route('/api/autonomy/{channel_id}',autonomy_settings,methods=['POST']),
             Route('/api/reliability', reliability_report),
