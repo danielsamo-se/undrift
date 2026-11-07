@@ -47,6 +47,8 @@ Record the public site: https://undrift-jury-demo.equalglass4.chatgpt.site (or t
 
 ## Remaining owner decisions
 
-1. **Deploy the prepared v3 jury release** (`.tools/jury-site-v3`) through the existing Sites workflow, then run `.tools/verify_jury_v3.py https://undrift-jury-demo.equalglass4.chatgpt.site`.
+The jury release is deployed as Sites version 3 and publicly verified, with exactly 12 archives. See `deployment/jury/deployment.json` and `deployment/jury/verification.json` for the release identity and checks.
+
+1. **Record** the demonstration using the plan above.
 2. **Push** the repository to GitHub, if the repository should be shared.
 3. **Submit** the description and video.

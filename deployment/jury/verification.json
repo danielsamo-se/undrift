@@ -1,60 +1,124 @@
 {
-  "snapshot_id": "47318482aa4e3511b47aa8a13f3193f4cfcd58e745ddc00218c4eefb6f22eb29",
-  "database_identities": true,
-  "exact_publication_commit": true,
-  "native_human_answers": true,
-  "reliability_series_separate": true,
-  "writes_denied": true,
-  "private_files_inaccessible": true,
-  "no_fabricated_fresh_events": true,
-  "guide": {
+  "origin": "https://undrift-jury-demo.equalglass4.chatgpt.site",
+  "snapshot_id": "ed2dc39075fba64cddcfc85ae3691b276d069980d7139fb7c08a71b4bb3587a3",
+  "database_identities": 12,
+  "reliability": {
     "rendered": true,
-    "historical_banner": true,
+    "replay_banner": true,
     "no_load_errors": true,
     "no_unlock_controls": true,
+    "no_write_buttons": true,
+    "screenshot": true
+  },
+  "publication_commit": true,
+  "native_answers": 5,
+  "guard_live_check": true,
+  "memory_metadata_only": true,
+  "slack_not_connected": true,
+  "autonomy_config": true,
+  "writes_denied": 44,
+  "private_paths_404": true,
+  "guide": {
+    "rendered": true,
+    "replay_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "no_write_buttons": true,
+    "screenshot": true
+  },
+  "guide-mobile": {
+    "rendered": true,
+    "replay_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "no_write_buttons": true,
     "screenshot": true
   },
   "impact": {
     "rendered": true,
-    "historical_banner": true,
+    "replay_banner": true,
     "no_load_errors": true,
     "no_unlock_controls": true,
+    "no_write_buttons": true,
     "screenshot": true
   },
   "review": {
     "rendered": true,
-    "historical_banner": true,
+    "replay_banner": true,
     "no_load_errors": true,
     "no_unlock_controls": true,
+    "no_write_buttons": true,
     "screenshot": true
   },
-  "reliability": {
+  "autonomy": {
     "rendered": true,
-    "historical_banner": true,
+    "replay_banner": true,
     "no_load_errors": true,
     "no_unlock_controls": true,
+    "no_write_buttons": true,
+    "screenshot": true
+  },
+  "fixture": {
+    "rendered": true,
+    "replay_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "no_write_buttons": true,
+    "screenshot": true
+  },
+  "guard": {
+    "rendered": true,
+    "replay_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "no_write_buttons": true,
+    "screenshot": true
+  },
+  "memory": {
+    "rendered": true,
+    "replay_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "no_write_buttons": true,
     "screenshot": true
   },
   "activity": {
     "rendered": true,
-    "historical_banner": true,
+    "replay_banner": true,
     "no_load_errors": true,
     "no_unlock_controls": true,
+    "no_write_buttons": true,
     "screenshot": true
   },
-  "preserved_historical_files": 102,
-  "public_url": "https://undrift-jury-demo.equalglass4.chatgpt.site",
-  "anonymous": true,
-  "local_preview_stopped": true,
-  "tests": {
-    "backend_passed": 393,
-    "frontend_passed": 64,
-    "worker_security_passed": 5,
-    "typescript": "passed",
-    "production_build": "passed"
+  "preserved_historical_files": 101,
+  "approved_changes": [
+    ".env"
+  ],
+  "prepared_release_identity": {
+    "snapshot_id": "ed2dc39075fba64cddcfc85ae3691b276d069980d7139fb7c08a71b4bb3587a3",
+    "source_database_ids": [
+      "b00e1c9afd9c4f188b2f225bc895b2bf",
+      "b63987b2714c48f38bc8b8de6664d18c",
+      "7fca0630671440ed936569c0e77c9c4a",
+      "3afdc367a5384356a685c790303f2f83",
+      "b4476b3881fd40daa5038bcf8c33d3f4",
+      "8dc2d31c35a1455daa0165899d154cf0",
+      "831461e7d45e47429bf5d1da42c4a899",
+      "a2fd8cc4ae444492bdfa70bb674f7e59",
+      "f6ce612fc16b42b48aeccf750162ae2f",
+      "47563f9dd68847a8866a746a1dbabfb1",
+      "d1f1ca2ef34940d29e341889c797eb1f",
+      "fd569ecf81d64b83a7205206c86e0b0a"
+    ],
+    "exact_prepared_release_match": true
   },
-  "existing_services_unchanged": 6,
-  "paid_cominty_executions": 0,
-  "immutable_across_two_deployments": true,
-  "exact_archived_worker_hash_verified": true
+  "worker_tests": {
+    "passed": 5,
+    "failed": 0
+  },
+  "deployment_session_preservation": {
+    "protected_files": 74,
+    "changed": []
+  },
+  "verification_command": ".venv/Scripts/python.exe -B .tools/verify_jury_v3.py https://undrift-jury-demo.equalglass4.chatgpt.site"
 }

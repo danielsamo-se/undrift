@@ -8,9 +8,17 @@ It has no dependency on the laptop, ngrok, local API services, Cominty availabil
 or GitHub credentials. The operational Python application and local reviewer flow
 remain unchanged and separate.
 
-## Release v3 (prepared; deployment pending)
+## Release v3 (deployed and verified)
 
-The live site still serves version 2, recorded in `deployment/jury/deployment.json`. Version 3 is built and verified locally but **not deployed**: Sites deployment runs through the Codex Sites workflow, which this checkout cannot invoke.
+The live site serves **Sites version 3**, published through the authenticated Codex Sites workflow on 7 November 2026. `deployment/jury/deployment.json` binds its saved version ID, source commit, exact Worker bytes and public snapshot. The prepared release record remains unchanged at `deployment/jury/release-v3-prepared.json`.
+
+- Site source commit: `903f76b9f5d1a797b1cccbc63f9292a011f1890a` (the separate Sites repository).
+- Undrift implementation checkpoint: `687cabc`.
+- Snapshot SHA-256: `ed2dc39075fba64cddcfc85ae3691b276d069980d7139fb7c08a71b4bb3587a3`.
+- Worker SHA-256: `4873df971ab70f45a25d4f76cd7a3029e22c13158dfb439bb39fd71d6a3e9234`.
+- Exactly 12 historical archives; no writable backend, runtime secrets, MCP server or paid execution.
+
+Public verification passed: all 12 expected database identities, all ten browser views (including mobile), 44 write attempts rejected with 403, private paths rejected with 404, and the recorded Guard, Memory, Autonomy, clarification, publishing and Reliability evidence. Sanitized results are retained in `deployment/jury/verification.json`. The separate Worker suite passed all five tests.
 
 What v3 changes:
 
@@ -28,14 +36,13 @@ Build artifacts:
 - export: `.tools/jury-replay-v3.json`, snapshot `ed2dc39075fba64c…`;
 - verification: `.tools/verify_jury_v3.py`, which checks the 12 database identities, the Guard, Memory and Autonomy evidence, 44 write attempts (all 403), private paths (404) and 10 browser routes, including a phone width.
 
-To deploy:
-1. Save and deploy `.tools/jury-site-v3/dist` as a new version of the registered project `appgprj_6aeeeefd…`. Version 2 remains the rollback.
-2. Run `.venv\Scripts\python.exe -B .tools\verify_jury_v3.py https://undrift-jury-demo.equalglass4.chatgpt.site`.
-3. Update `deployment/jury/deployment.json`.
+To recheck this release, run `.venv\Scripts\python.exe -B .tools\verify_jury_v3.py https://undrift-jury-demo.equalglass4.chatgpt.site`.
+
+Version 2 remains saved in the same Sites project for rollback. Its original deployment and verification records are preserved under `deployment/jury/releases/`, and its local source bytes are retained in the ignored `.tools/jury-site-v2-rollback-20261107/`. If rollback is required, deploy the exact v2 saved version ID from `releases/v2-deployment.json` through Sites; do not create another project or rewrite source history. No rollback was performed during v3 publication.
 
 ## Architecture and scope
 
-`jury.py` exports nine independent archives using the existing API handlers and
+`jury.py` exports twelve independent archives using the existing API handlers and
 readmodel against `ArchiveStore`, a SQLite connection in `mode=ro` with
 `query_only=ON`. Migrations, seeding and run reaping are disabled. Export never
 changes historical states, imports unrelated runs into one database, or invents
@@ -59,10 +66,10 @@ before live Guard, channel autonomy, Memory, Slack or memo generation is exposed
 
 ## Jury experience
 
-The guide links six parts of the genuine demonstration: autonomous discovery,
-native clarification and same-thread continuation, exact-patch review, human-merged
-GitHub PR to Vercel verification, the complete Reliability study, and recorded MCP
-activity. Each page displays a historical/read-only banner. Archive selection
+The nine-step guide links discovery, native clarification and same-thread continuation,
+exact-patch review, channel autonomy, GitHub PR to Vercel verification, Guard,
+Memory and the complete Reliability study. Recorded MCP activity is also accessible.
+Each page displays a historical/read-only banner. Archive selection
 remounts the data views and retains a shareable `?replay=` query parameter, so events
 and findings from independent executions cannot be merged in the browser.
 
@@ -75,6 +82,10 @@ The archives are:
 - `evaluation-1` through `evaluation-5`: all five real Reliability-v2 trials,
   retaining both strategy failures and their saved questions.
 - `reliability-v1`: the archived failed first evaluation, unchanged.
+- `autonomy`: recorded channel delegation and audit from the operator environment.
+- `autonomy-fixture`: a clearly labelled local fixture demonstrating bounded application.
+- `guard`: the real server-verified Cominty ALLOW, labelled deterministic checks,
+  native Memory read-back metadata and the disconnected Slack status.
 
 Reliability-v1 and v2 reports remain separately selectable. Primary v2 accuracy
 and outdated/UNKNOWN recall average 60%; the two failed trials receive zero primary
