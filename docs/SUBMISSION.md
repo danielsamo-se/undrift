@@ -35,15 +35,18 @@ Record the public site: https://undrift-jury-demo.equalglass4.chatgpt.site (or t
 | 8 | 2:20–2:45 | **09** opens Reliability v2. Show 3 of 5 reconciled, 60% primary accuracy, the two failed trials and 0 false positives. | "We measured it with five frozen, paid trials. Three were perfect, two failed our search contract, and they count. That is 60%, with zero false positives." | Frozen evaluation |
 | 9 | 2:45–3:00 | Back to the guide hero, or the live Shiftly returns page showing 30 days. | "One policy change, every channel checked, and only verified, human-authorized corrections reach customers. That's Undrift." | — |
 
+**Optional shot 6b (local, not on the public site):** the real Cominty Guard BLOCK `gchk-5ce8448d…` in the local Guard demo (http://127.0.0.1:8503, Guard view). "Eight weeks" passed the deterministic precheck; the Cominty Guard blocked it as contradicting the 30-day policy. Label it as the local operator environment. See `docs/LIVE_DEMOS.md`.
+
 **Limitations to mention (one sentence each, steps 4, 6 and 8):**
-- Automatic application is shown with a labelled local fixture.
-- Guard has one recorded live check.
+- Automatic application is shown with a labelled local fixture. One real autonomous attempt failed closed on the search contract.
+- Guard has two recorded live checks: one ALLOW and one BLOCK. Only the ALLOW is on the public site.
 - The study is small and includes two failures.
 
 **Do not say:**
 - that Slack is connected;
 - that agents are running live on the public site;
-- that the blocked Guard cases came from the Cominty agent.
+- that the blocked Guard cases on the public site came from the Cominty agent (those are deterministic rules);
+- that a real Cominty run applied a Help Center change automatically.
 
 ## Remaining owner decisions
 

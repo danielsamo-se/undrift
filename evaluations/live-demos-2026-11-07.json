@@ -1,0 +1,354 @@
+{
+  "date": "2026-11-07",
+  "code_commit_before": "f2106b3",
+  "guard_block": {
+    "evidence_kind": "real_cominty_guard_execution",
+    "paid_checks_executed": 1,
+    "retries": 0,
+    "service": "http://127.0.0.1:8503 guard-demo-v1 (live for this check only, then returned to disabled)",
+    "candidate": "For orders placed on or after November 4, 2026, customers have eight weeks to return their purchases.",
+    "candidate_sha256": "1a173c94348af3d638fac7f1d25c34eebdb307812ba959ced422113ef980d9ad",
+    "channel_id": "help-center",
+    "policy": {
+      "id": "shiftly-returns",
+      "version": 2
+    },
+    "precheck": {
+      "findings": [],
+      "verdict": "CLEAR"
+    },
+    "decision": "BLOCK",
+    "decision_source": "cominty_guard",
+    "release_eligible": false,
+    "agent_output": {
+      "findings": [
+        {
+          "assessment": "CONTRADICTS_POLICY",
+          "claim": "For orders placed on or after November 4, 2026, customers have eight weeks to return their purchases.",
+          "evidence_refs": [
+            "P"
+          ],
+          "reason": "P sets the voluntary return period for purchases made on or after 2026-11-04 at 30 days, not eight weeks (56 days)."
+        }
+      ],
+      "uncertainty": null,
+      "verdict": "BLOCK"
+    },
+    "verification": {
+      "ok": true,
+      "problems": [],
+      "stale": []
+    },
+    "execution": {
+      "agent_id": "_ofnqauQg4_y",
+      "cost": {
+        "cached_tokens": 0,
+        "failed": false,
+        "input_cost": "0.0238755",
+        "input_tokens": 9551,
+        "output_cost": "0.00432",
+        "output_tokens": 432,
+        "total": "0.0281955"
+      },
+      "duration_s": 5.72,
+      "error": null,
+      "message_id": "0b07b9ed-25d5-4bb5-b48d-96faffa12250",
+      "mode": "cominty",
+      "models": [
+        "Claude Sonnet 5.5"
+      ],
+      "source": "cominty",
+      "status": "success",
+      "thread_id": "952d762c-76d8-401a-8fe7-680fa5dde444",
+      "tool_calls": []
+    },
+    "reasons": [
+      "Guard agent verdict BLOCK verified against candidate, policy and evidence bindings."
+    ],
+    "check_id": "gchk-5ce8448d76f85805",
+    "case_sha256": "4a54524190cf29833c9cb6d78dc2cb225913b79ad5459f2e7099e01630139923",
+    "database_id": "fd569ecf81d64b83a7205206c86e0b0a",
+    "memory_recall": {
+      "id": "rcl-c2478c2887a2082f",
+      "database_id": "fd569ecf81d64b83a7205206c86e0b0a",
+      "created_at": "2026-11-07T17:32:13.564611+00:00",
+      "check_id": "gchk-5ce8448d76f85805",
+      "namespace": "undrift-shiftly-returns",
+      "status": "ok",
+      "matches": [],
+      "error": null
+    },
+    "interpretation": "The deterministic precheck does not parse spelled-out week durations, so it returned CLEAR; the BLOCK came solely from the Cominty Guard and was accepted by server verification."
+  },
+  "autonomy_live": {
+    "evidence_kind": "real_cominty_impact_execution",
+    "scenario": "autonomy-live-v1",
+    "database_id": "f5f087fb0e984ad98f3bc0421a55703e",
+    "seed_sha256": "840a2e86dfab6c98d9bc9afdcb47a401279d31fc1e4e56d0c953a45ae7ebf869",
+    "documents": [
+      "help-101",
+      "help-102",
+      "web-101"
+    ],
+    "delegation_before_run": {
+      "channel_id": "help-center",
+      "version": 1,
+      "mode": "bounded_auto",
+      "max_per_run": 1,
+      "updated_at": "2026-11-07T17:30:32.116470+00:00",
+      "updated_by": "local-reviewer",
+      "note": "Live autonomy scenario: Help Center may apply at most one verified single-sentence return-window correction per run."
+    },
+    "paid_runs_executed": 1,
+    "retries": 0,
+    "max_steps": 40,
+    "run": {
+      "id": "run-84e73977cab0191d",
+      "status": "failed",
+      "error": "discovery search-first contract was not satisfied",
+      "agent_id": "-cS4pr7oTPO4",
+      "thread_id": "2de88034-78e4-41c7-8daa-97c449801a23",
+      "message_id": "cc958c8a-a05e-4d68-b929-a69bf90a721a",
+      "policy_version": 2,
+      "created_at": "2026-11-07T17:33:59.682770+00:00",
+      "closed_at": "2026-11-07T17:35:02.102220+00:00"
+    },
+    "cost": {
+      "failed": false,
+      "input_tokens": 168460,
+      "cached_tokens": 141012,
+      "output_tokens": 7327,
+      "input_cost": "0.0752725",
+      "output_cost": "0.0726716",
+      "total": "0.1479441"
+    },
+    "search_strategy": {
+      "enforced": true,
+      "distinct_formulated_queries_before_catalog": 3,
+      "number_free_query": true,
+      "lead_followed": false,
+      "no_search_leads": false,
+      "catalog_complete": true,
+      "search_calls": 4,
+      "similarity_calls": 0
+    },
+    "findings_recorded_via_mcp": [
+      {
+        "document_id": "help-101",
+        "document_version": 1,
+        "category": "OUTDATED",
+        "evidence": "Items can be returned within 60 days.",
+        "reason": "General return-eligibility statement of 60 days contradicts current policy shiftly-returns v2: 30 days for purchases on or after 2026-11-04, with earlier purchases keeping the period promised at purchase.",
+        "proposed_content": "Items purchased on or after 2026-11-04 can be returned within 30 days. Purchases made before 2026-11-04 keep the return period promised at the time of purchase. Keep your receipt handy.",
+        "source": "mcp",
+        "retrieved_during_run": true
+      },
+      {
+        "document_id": "help-102",
+        "document_version": 1,
+        "category": "VALID_DISTINCT",
+        "evidence": "Customers have a statutory 14-day withdrawal right.",
+        "reason": "Explicitly independent statutory 14-day withdrawal right, which the current voluntary return policy states it does not change.",
+        "proposed_content": null,
+        "source": "mcp",
+        "retrieved_during_run": true
+      },
+      {
+        "document_id": "web-101",
+        "document_version": 1,
+        "category": "UNRELATED",
+        "evidence": "Free shipping on orders above 50 EUR.",
+        "reason": "Concerns shipping charges, an independent subject needing no return-policy fact.",
+        "proposed_content": null,
+        "source": "mcp",
+        "retrieved_during_run": true
+      }
+    ],
+    "proposals_created": 0,
+    "auto_applications": 0,
+    "document_versions_after": {
+      "help-101": 1,
+      "help-102": 1,
+      "web-101": 1
+    },
+    "audit_event_types": [
+      [
+        1,
+        "demo.seeded",
+        "ok"
+      ],
+      [
+        2,
+        "autonomy.policy_changed",
+        "ok"
+      ],
+      [
+        3,
+        "server.started",
+        "ok"
+      ],
+      [
+        4,
+        "mcp.tool_call",
+        "ok"
+      ],
+      [
+        5,
+        "mcp.tool_call",
+        "ok"
+      ],
+      [
+        6,
+        "agent.run_started",
+        "ok"
+      ],
+      [
+        7,
+        "agent.conversation_message",
+        "ok"
+      ],
+      [
+        8,
+        "agent.retrieval",
+        "ok"
+      ],
+      [
+        9,
+        "mcp.tool_call",
+        "ok"
+      ],
+      [
+        10,
+        "agent.discovery",
+        "ok"
+      ],
+      [
+        11,
+        "mcp.tool_call",
+        "ok"
+      ],
+      [
+        12,
+        "agent.discovery",
+        "ok"
+      ],
+      [
+        13,
+        "agent.discovery",
+        "ok"
+      ],
+      [
+        14,
+        "agent.discovery",
+        "ok"
+      ],
+      [
+        15,
+        "mcp.tool_call",
+        "ok"
+      ],
+      [
+        16,
+        "mcp.tool_call",
+        "ok"
+      ],
+      [
+        17,
+        "mcp.tool_call",
+        "ok"
+      ],
+      [
+        18,
+        "agent.discovery",
+        "ok"
+      ],
+      [
+        19,
+        "mcp.tool_call",
+        "ok"
+      ],
+      [
+        20,
+        "agent.retrieval",
+        "ok"
+      ],
+      [
+        21,
+        "mcp.tool_call",
+        "ok"
+      ],
+      [
+        22,
+        "agent.retrieval",
+        "ok"
+      ],
+      [
+        23,
+        "mcp.tool_call",
+        "ok"
+      ],
+      [
+        24,
+        "agent.retrieval",
+        "ok"
+      ],
+      [
+        25,
+        "mcp.tool_call",
+        "ok"
+      ],
+      [
+        26,
+        "finding.recorded",
+        "ok"
+      ],
+      [
+        27,
+        "mcp.tool_call",
+        "ok"
+      ],
+      [
+        28,
+        "finding.recorded",
+        "ok"
+      ],
+      [
+        29,
+        "mcp.tool_call",
+        "ok"
+      ],
+      [
+        30,
+        "finding.recorded",
+        "ok"
+      ],
+      [
+        31,
+        "mcp.tool_call",
+        "ok"
+      ],
+      [
+        32,
+        "agent.reply_rejected",
+        "error"
+      ],
+      [
+        33,
+        "agent.run_finished",
+        "error"
+      ]
+    ],
+    "interpretation": "Classifications were correct, but the agent ran three formulated searches and the catalog browse before retrieving any search lead, so the server rejected the reply under the search-first contract and the run failed closed: no proposal, no application. Independently, the agent again added the transition sentence (\"Purchases made before 2026-11-04 keep ...\"), which the autonomy finalizer never auto-applies (not_single_sentence_correction, policy_sensitive_exception); a free local simulation confirmed that a compliant run with this correction would have been routed to human review, not applied."
+  },
+  "preservation": {
+    "protected_databases_checked": 9,
+    "logical_changes": [
+      "data/reliability-v2/evaluation-05.db events: one server.started system event (seq 228) appended when its loopback MCP service was restarted after the run; no run, finding, proposal, document or result row changed"
+    ],
+    "impact_agent_changed": false,
+    "guard_agent_changed": false,
+    "jury_site_redeployed": false,
+    "shiftly_production_changed": false,
+    "slack_used": false
+  }
+}
