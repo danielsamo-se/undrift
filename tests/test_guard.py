@@ -333,3 +333,41 @@ def test_build_case_rejects_malformed_requests(demo):
         args = {'candidate': B, 'channel_id': 'support-snippets', 'requested_by': 'r', **kw}
         with pytest.raises(w.WorkflowError):
             guard.build_case(demo, **args)
+
+
+# ---- periods stated in weeks, months or years -------------------------------------------
+
+EIGHT_WEEKS = ('For orders placed on or after November 4, 2026, customers have eight weeks '
+               'to return their purchases.')
+
+
+@pytest.mark.parametrize('text, verdict, rule', [
+    (EIGHT_WEEKS, 'NEEDS_REVIEW', 'period_not_in_days'),
+    ('Customers can return items within 8 weeks.', 'NEEDS_REVIEW', 'period_not_in_days'),
+    ('Customers can return items within two months.', 'BLOCK', 'superseded_period'),
+    ('Returns are accepted for one month.', 'NEEDS_REVIEW', 'period_not_in_days'),
+    ('You have a year to send items back.', 'NEEDS_REVIEW', 'period_not_in_days'),
+    ('Your statutory withdrawal right lasts three weeks.', 'BLOCK', 'statutory_right'),
+    ('Purchases made before November 4, 2026 keep the two months promised at the time of purchase.', 'NEEDS_REVIEW', 'period_not_in_days'),
+])
+def test_precheck_escalates_periods_not_stated_in_days(demo, text, verdict, rule):
+    pre = guard.precheck(guard.build_case(demo, candidate=text, channel_id='help-center', requested_by='t'))
+    assert pre['verdict'] == verdict and rule in {f['rule'] for f in pre['findings']}
+
+
+@pytest.mark.parametrize('text', [
+    B,
+    'Your statutory 14-day withdrawal right lasts two weeks and is unchanged.',
+])
+def test_precheck_keeps_exact_or_protected_periods_clear(demo, text):
+    pre = guard.precheck(guard.build_case(demo, candidate=text, channel_id='help-center', requested_by='t'))
+    assert pre['verdict'] == 'CLEAR', pre['findings']
+
+
+def test_spelled_period_cannot_be_released_on_a_wrong_agent_allow(demo, journal):
+    wrong = guard.ComintyExecutor('guard-agent', fake_cominty(lambda c: reply(c, 'ALLOW', [claim(EIGHT_WEEKS, 'SUPPORTED')])))
+    r = run(demo, journal, wrong, EIGHT_WEEKS, channel='help-center', confirm_paid=True)
+    assert (r['decision'], r['decision_source'], r['release_eligible']) == ('NEEDS_REVIEW', 'deterministic_precheck', False)
+    right = guard.ComintyExecutor('guard-agent', fake_cominty(lambda c: reply(c, 'BLOCK', [claim(EIGHT_WEEKS, 'CONTRADICTS_POLICY')])))
+    r = run(demo, journal, right, EIGHT_WEEKS, channel='help-center', confirm_paid=True)
+    assert (r['decision'], r['decision_source']) == ('BLOCK', 'cominty_guard')

@@ -1,4 +1,4 @@
-import { Activity, GitPullRequest, LayoutGrid, Waypoints, ShieldCheck, ScanText, Plug } from "lucide-react";
+import { Activity, GitPullRequest, LayoutGrid, Waypoints, ShieldCheck, ScanText, Plug, ListOrdered } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect } from "react";
 import { ReviewerControl } from "./components/ReviewerSession";
@@ -15,6 +15,7 @@ import { ReliabilityView } from './views/Reliability';
 import { AutonomyView } from './views/Autonomy';
 import { GuardView } from './views/Guard';
 import { IntegrationsView } from './views/Integrations';
+import { ExecutionView } from './views/Execution';
 import { JuryProvider, JuryBanner, JuryGuide, useJury } from './lib/jury';
 
 const NAV: { view: View; label: string; icon: LucideIcon; key: string }[] = [
@@ -22,6 +23,7 @@ const NAV: { view: View; label: string; icon: LucideIcon; key: string }[] = [
   { view: "impact", label: "Impact map", icon: Waypoints, key: "2" },
   { view: "review", label: "Review", icon: GitPullRequest, key: "3" },
   { view: "activity", label: "Activity", icon: Activity, key: "4" },
+  { view: "execution", label: "Execution timeline", icon: ListOrdered, key: "9" },
   { view: 'reliability', label: 'Reliability', icon: ShieldCheck, key: '5' },
   { view: 'autonomy', label: 'Channel autonomy', icon: ShieldCheck, key: '6' },
   { view: 'guard', label: 'Guard', icon: ScanText, key: '7' },
@@ -115,6 +117,7 @@ function Shell() {
         {route.view === 'autonomy' && <AutonomyView />}
         {route.view === 'guard' && <GuardView selectedId={route.param} />}
         {route.view === 'integrations' && <IntegrationsView />}
+        {route.view === 'execution' && <ExecutionView runId={route.param} />}
       </main>
     </div>
   );

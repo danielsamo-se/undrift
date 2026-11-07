@@ -113,7 +113,7 @@ export const api = {
   impact: (policyId: string, signal?: AbortSignal) =>
     request<ImpactSnapshot>(`/api/policies/${enc(policyId)}/impact`, { signal }),
   eventsTail: (tail: number) => request<EventsPage>(`/api/events?tail=${tail}`),
-  eventsAfter: (after: number, limit = 500) => request<EventsPage>(`/api/events?after=${after}&limit=${limit}`),
+  eventsAfter: (after: number, limit = 500, signal?: AbortSignal) => request<EventsPage>(`/api/events?after=${after}&limit=${limit}`, { signal }),
   runs: (signal?: AbortSignal) => request<{ runs: RunSummary[] }>("/api/runs", { signal }),
   run: (id: string, signal?: AbortSignal) => request<{ run: RunDetail }>(`/api/runs/${enc(id)}`, { signal }),
   proposals: (status?: ProposalStatus, signal?: AbortSignal) =>

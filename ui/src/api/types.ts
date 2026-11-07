@@ -145,6 +145,8 @@ export interface TraceStep {
 
 export interface RunSummary {
   conversation_id?: string | null;
+  phase?: number | null;
+  document_ids?: string[];
   awaiting_clarification?: boolean;
   document_outcomes?: Record<string, { action: string; proposal_id?: string }>;
   id: string;

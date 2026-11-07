@@ -3,6 +3,7 @@ import { ApiError, api } from '../api/client';
 import { useReviewerSession } from '../api/session';
 import type { GuardCheck, GuardDecision, GuardSource, MemoryRecall } from '../api/types';
 import { UnlockDialog } from '../components/ReviewerSession';
+import { GuardComparison, realGuardDecisions } from '../components/GuardComparison';
 import { ErrorState, LoadingBlock, PolicyVersion, Spinner } from '../components/ui';
 import { useImpact } from '../lib/data';
 import { formatDateTime, shortId } from '../lib/format';
@@ -128,6 +129,7 @@ export function GuardView({ selectedId = null }: { selectedId?: string | null })
   const channels = impact.data?.channels ?? [];
   const selected = (fresh && fresh.id === effectiveId ? fresh : o.checks.find(c => c.id === effectiveId)) ?? null;
   const recall = detail.data && detail.data.check.id === effectiveId ? detail.data.memory_recall : null;
+  const realCount = realGuardDecisions(o.checks).length;
 
   async function verify() {
     setBusy(true); setError(null);
@@ -151,13 +153,14 @@ export function GuardView({ selectedId = null }: { selectedId?: string | null })
   return <div className="page guard-page">
     <header className="ph"><div><h1>Guard</h1>
       <p className="ph-sub">Fail-closed validation of outgoing policy and support responses. Guard decides only whether a text may be released; it never sends or publishes.</p></div></header>
-    {jury.readonly ? <p className="note guard-mode" data-testid="guard-mode">Recorded evidence. The separate Cominty Guard agent ran once for real (the ALLOW check, verified by the server). The other checks were decided by the deterministic precheck or failed closed without an agent; they are labelled as such. Nothing runs from this site.</p> :
+    {jury.readonly ? <p className="note guard-mode" data-testid="guard-mode">Recorded evidence. {realCount === 1 ? 'The separate Cominty Guard agent ran once for real (verified by the server).' : `The separate Cominty Guard agent ran ${realCount} times for real, each verdict verified by the server.`} The other checks were decided by the deterministic precheck or failed closed without an agent; they are labelled as such. Nothing runs from this site.</p> :
     <p className={`note ${ex.mode === 'cominty' ? '' : 'note-warn'} guard-mode`} data-testid="guard-mode">
       {ex.mode === 'cominty'
         ? 'Real Cominty Guard agent configured. Each check is a paid Cominty execution and needs explicit confirmation.'
         : 'Cominty Guard agent not activated. Checks run the deterministic precheck and then fail closed: no response can become release-eligible.'}
     </p>}
     {!jury.readonly && !o.journal_configured && <p className="note note-warn">This service has no Guard audit journal configured, so checks cannot be run here.</p>}
+    <GuardComparison checks={o.checks} policy={impact.data?.policy ?? null} />
     <div className="guard-layout">
       {jury.readonly ? recordedList : <form className="guard-form section" onSubmit={e => { e.preventDefault(); void verify(); }}>
         <label className="field"><span>Draft customer-facing response</span>

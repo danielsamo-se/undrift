@@ -50,6 +50,9 @@ _STATUTORY = re.compile(r'\b(statutory|withdrawal|right of withdrawal|cooling[- 
 _COMMITMENT = re.compile(r'\b(previously promised|promised|original terms|(?:placed|made|purchased|bought) before|'
                          r'your (?:earlier|previous|original))\b', re.I)
 _ORDER = re.compile(r'\border\s*#?\s*(\d{3,})', re.I)
+_NUMBER_WORDS = {w: i for i, w in enumerate('one two three four five six seven eight nine ten eleven twelve'.split(), 1)} | {'a': 1, 'an': 1}
+_SPELLED = re.compile(r'\b(\d{1,3}|' + '|'.join(_NUMBER_WORDS) + r')[\s-]+(weeks?|months?|years?)\b', re.I)
+_UNIT_DAYS = {'week': (7, True), 'month': (30, False), 'year': (365, False)}  # (days, exact)
 _PROMO = re.compile(r'\b(promotion|promo|special offer|extended return|exception(?:al(?:ly)?)?|goodwill)\b', re.I)
 _PII = [(re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+'), '<email>'),
         (re.compile(r'\+?\d[\d ()/-]{7,}\d'), '<number>'),
@@ -78,6 +81,16 @@ JSON_FIELDS = ('evidence', 'facts', 'precheck', 'execution', 'agent_output', 've
 
 def sha256(text: str) -> str:
     return hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+
+def _spelled_periods(sentence: str) -> dict[str, tuple[int, bool]]:
+    """Periods stated in weeks, months or years as (day equivalent, exact). Months and years are approximate."""
+    out = {}
+    for m in _SPELLED.finditer(sentence):
+        count = int(m.group(1)) if m.group(1).isdigit() else _NUMBER_WORDS[m.group(1).lower()]
+        per_unit, exact = _UNIT_DAYS[m.group(2).lower().rstrip('s')]
+        out[m.group(0)] = (count * per_unit, exact)
+    return out
 
 
 def redact_pii(text: str) -> str:
@@ -217,8 +230,10 @@ def precheck(case: dict[str, Any]) -> dict[str, Any]:
 
     for sentence in w.split_sentences(case['candidate']['text']):
         days = {int(d) for d in _DAYS.findall(sentence)}
+        spelled = _spelled_periods(sentence)
         negated = bool(_REVOKED.search(sentence))
-        if _STATUTORY.search(sentence) and (negated or days - {STATUTORY_DAYS}):
+        if _STATUTORY.search(sentence) and (negated or days - {STATUTORY_DAYS}
+                                            or {d for d, _ in spelled.values()} - {STATUTORY_DAYS}):
             add('statutory_right', 'BLOCK', sentence,
                 f'Statutory {STATUTORY_DAYS}-day withdrawal rights must not be revoked or restated differently.')
             continue
@@ -230,6 +245,16 @@ def precheck(case: dict[str, Any]) -> dict[str, Any]:
             add('superseded_period', 'BLOCK', sentence,
                 f'States a superseded period ({", ".join(map(str, sorted(days & superseded)))} days) '
                 f'as current; policy v{policy["version"]} sets {policy["voluntary_return_days"]} days.')
+        # Weeks/months/years bypass the day-based rules above; escalate them, never clear them.
+        for phrase, (equivalent, exact) in spelled.items():
+            if equivalent in superseded and not commitment:
+                add('superseded_period', 'BLOCK', sentence,
+                    f'"{phrase}" is about {equivalent} days, a superseded period; policy v{policy["version"]} '
+                    f'sets {policy["voluntary_return_days"]} days.')
+            elif equivalent not in allowed or not exact:
+                add('period_not_in_days', 'NEEDS_REVIEW', sentence,
+                    f'"{phrase}" ({"=" if exact else "about"} {equivalent} days) does not state an exact policy period '
+                    f'in days; the current policy sets {policy["voluntary_return_days"]} days.')
         for number in _ORDER.findall(sentence):
             if number not in fact_text:
                 add('order_specific', 'NEEDS_REVIEW', sentence,
