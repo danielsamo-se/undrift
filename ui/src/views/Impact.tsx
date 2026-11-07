@@ -7,7 +7,7 @@ import { ImpactBoard } from "../components/ImpactBoard";
 import { ErrorState, LoadingBlock, PolicyVersion, StatusDot } from "../components/ui";
 import { consistency, liveDocuments } from "../lib/board";
 import { STATUS, STATUS_ORDER, type MapStatus } from "../lib/classification";
-import { useImpact } from "../lib/data";
+import { useAutonomy, useImpact } from "../lib/data";
 import { navigate, useNow } from "../lib/hooks";
 import { useLive } from "../lib/live";
 
@@ -20,6 +20,7 @@ export function ImpactView({ selectedId }: { selectedId: string | null }) {
 
 function Impact({ snap, selectedId }: { snap: ImpactSnapshot; selectedId: string | null }) {
   const live = useLive();
+  const autonomy = useAutonomy();
   const now = useNow(1000);
   const [status, setStatus] = useState<MapStatus | null>(null);
   const [query, setQuery] = useState("");
@@ -79,6 +80,8 @@ function Impact({ snap, selectedId }: { snap: ImpactSnapshot; selectedId: string
             channel={snap.channels.find((ch) => ch.id === selected.channel)}
             policy={snap.policy}
             onClose={() => select(null)}
+            channelPolicy={autonomy.data?.channels.find((c) => c.channel_id === selected.channel)}
+            historical={autonomy.data?.historical ?? false}
           />
         )}
       </div>

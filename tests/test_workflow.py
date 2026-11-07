@@ -247,6 +247,10 @@ def edit_document_externally(store: Store, document_id: str, content: str) -> No
 
 
 def test_full_review_flow_applies_new_document_version(changed: Store, token: str) -> None:
+    # Preserve local version/audit assertions on an eligible non-repository channel.
+    with changed.write() as c:
+        c.execute("INSERT INTO channels VALUES ('help-center','Help Center','public')")
+        c.execute("UPDATE documents SET channel_id='help-center' WHERE id='doc-001'")
     p = propose(changed)
     approved = workflow.approve(changed, p.id, token=token, note="Looks right.")
     assert (approved.status, approved.reviewed_by, approved.review_note) == (

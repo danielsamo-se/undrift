@@ -7,6 +7,7 @@ import { formatDateTime } from "../lib/format";
 import { UnlockDialog } from "./ReviewerSession";
 import { DocVersion, Modal, Spinner } from "./ui";
 import { useJury } from '../lib/jury';
+import { MODE_LABELS, blockerText } from '../views/Autonomy';
 
 type Action = "approve" | "reject" | "apply";
 
@@ -34,7 +35,7 @@ const STEPS = [
   { key: "applied", label: "Apply locally" },
 ] as const;
 
-function Flow({ status }: { status: Proposal["status"] }) {
+function Flow({ status, prOnly = false, automatic = false }: { status: Proposal["status"]; prOnly?: boolean; automatic?: boolean }) {
   const at = status === "rejected" ? -1 : STEPS.findIndex((s) => s.key === status);
   return (
     <ol className="flow" aria-label="Review flow">
@@ -43,7 +44,7 @@ function Flow({ status }: { status: Proposal["status"] }) {
           <span className="flow-mark" aria-hidden>
             {i < at ? <Check size={10} /> : i + 1}
           </span>
-          {s.label}
+          {automatic ? ['Verified findings', 'Delegated policy', 'Applied locally'][i] : prOnly && i === 2 ? 'GitHub PR' : s.label}
         </li>
       ))}
       {status === "rejected" && <li className="is-rejected">Rejected</li>}
@@ -61,6 +62,20 @@ export function ReviewDecision({ detail, onChanged }: { detail: ProposalDetail; 
   const [unlock, setUnlock] = useState(false);
   const { proposal: p, checks } = detail;
   const fresh = checks.document_unchanged && checks.policy_current;
+  const autonomy = detail.autonomy;
+  const prOnly = autonomy?.mode === 'pull_request';
+  const receipt = autonomy?.receipt;
+  const localApply = autonomy?.can_apply_locally ?? true;
+  const withheld = autonomy && !receipt && autonomy.mode === 'bounded_auto' && p.status === 'pending_review';
+  const reasons = (autonomy?.blockers ?? []).filter((b) => b !== 'proposal_not_pending');
+  const policyInfo = autonomy && <div className="note autonomy-decision" data-testid="autonomy-decision">
+    <strong>{receipt ? 'Delegated local application' : MODE_LABELS[autonomy.mode]}</strong>
+    {receipt ? <><p>Applied by the bounded local finalizer under channel delegation revision {receipt.policy_version}. No human patch approval was recorded, and nothing was published externally. Document version {receipt.applied_version} needs a new analysis.</p><p className="small">Receipt: {receipt.proposal_id} / {receipt.run_id}</p></>
+      : prOnly ? <p>Website channel: approval records human review only. Publishing continues in the GitHub panel with the exact repository patch; merging and deployment stay separate human actions. Direct local application is not available.</p>
+      : autonomy.mode === 'manual_only' ? <p>Protected channel. Undrift cannot create or apply corrections here; edit the source manually.</p>
+      : withheld ? <p>Delegation is active for this channel, but the server withheld automatic application: {reasons.map(blockerText).join('; ')}. A human decision is required.</p>
+      : <p>This channel requires human review. Approval and local application are separate, explicit steps.</p>}
+  </div>;
 
   const run = async (action: Action) => {
     setBusy(true);
@@ -83,17 +98,23 @@ export function ReviewDecision({ detail, onChanged }: { detail: ProposalDetail; 
   };
 
   const closed = p.status === "applied" || p.status === "rejected";
-  if(jury.readonly)return <section className="decision" aria-label="Decision"><h2>Recorded human review</h2><Flow status={p.status}/><p>This historical proposal is {p.status.replaceAll('_',' ')}. {p.reviewed_by && `Reviewer: ${p.reviewed_by}.`} {p.review_note}</p><p className="note">Read-only replay. Approving, rejecting and applying changes are unavailable.</p></section>;
+  if(jury.readonly)return <section className="decision" aria-label="Decision"><h2>{receipt ? 'Recorded delegated application' : 'Recorded human review'}</h2><Flow status={p.status} prOnly={prOnly} automatic={!!receipt}/>{policyInfo}<p>This historical proposal is {p.status.replaceAll('_',' ')}. {p.reviewed_by && `Reviewer: ${p.reviewed_by}.`} {p.review_note}</p><p className="note">Read-only replay. Approving, rejecting and applying changes are unavailable.</p></section>;
   return (
     <section className="decision" aria-label="Decision">
       <header className="decision-head">
         <h2>Decision</h2>
-        <Flow status={p.status} />
+        <Flow status={p.status} prOnly={prOnly} automatic={!!receipt} />
       </header>
+      {policyInfo}
 
       {closed ? (
         <p className="decision-outcome">
-          {p.status === "applied" ? (
+          {p.status === "applied" && receipt ? (
+            <>
+              Applied under channel delegation as <DocVersion version={p.applied_version} />
+              {p.applied_at && ` on ${formatDateTime(p.applied_at)}`}. No human approval was recorded.
+            </>
+          ) : p.status === "applied" ? (
             <>
               Applied locally as <DocVersion version={p.applied_version} />
               {p.applied_at && ` on ${formatDateTime(p.applied_at)}`}.
@@ -110,7 +131,7 @@ export function ReviewDecision({ detail, onChanged }: { detail: ProposalDetail; 
             <p className="decision-outcome">
               Approved by {p.reviewed_by}
               {p.reviewed_at && ` on ${formatDateTime(p.reviewed_at)}`}
-              {p.review_note && <span className="muted"> · “{p.review_note}”</span>}. Apply it to update the local demo store.
+              {p.review_note && <span className="muted"> · “{p.review_note}”</span>}. {prOnly ? 'Continue in the GitHub publishing panel below.' : 'Apply it to update the local demo store.'}
             </p>
           )}
           {!fresh && (
@@ -143,11 +164,11 @@ export function ReviewDecision({ detail, onChanged }: { detail: ProposalDetail; 
               <button className="btn btn-primary" disabled={!session || !fresh} onClick={() => setPending("approve")}>
                 <Check size={13} aria-hidden /> Approve
               </button>
-            ) : (
+            ) : localApply ? (
               <button className="btn btn-primary" disabled={!session || !fresh} onClick={() => setPending("apply")}>
                 <Send size={13} aria-hidden /> Apply locally
               </button>
-            )}
+            ) : null}
           </div>
           {!session && <p className="decision-hint">Decisions need the local review token. It stays in this tab's memory only.</p>}
         </>
@@ -169,7 +190,7 @@ export function ReviewDecision({ detail, onChanged }: { detail: ProposalDetail; 
             </>
           }
         >
-          <p>{COPY[pending].body}</p>
+          <p>{pending === 'approve' && prOnly ? 'Records human review of this correction. Creating the GitHub PR requires separate confirmation of the exact repository patch below. No merge or deployment is authorized.' : COPY[pending].body}</p>
           {pending === "reject" && (
             <label className="field">
               <span>Note (optional)</span>

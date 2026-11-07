@@ -80,7 +80,8 @@ def snapshot(path, *, journal=None):
         if response.status_code != 200:
             raise RuntimeError(f'Historical projection failed: {route} ({response.status_code})')
         return sanitize(response.json())
-    payload = {route: get(route) for route in ['/api/health', '/api/documents', '/api/runs', '/api/proposals', '/api/conversations']}
+    payload = {route: get(route) for route in ['/api/health', '/api/documents', '/api/runs', '/api/proposals', '/api/conversations','/api/autonomy']}
+    payload['/api/autonomy']['historical']=True
     for policy_id in source.policy_ids():
         for suffix in ['', '/impact']:
             route = f'/api/policies/{policy_id}{suffix}'

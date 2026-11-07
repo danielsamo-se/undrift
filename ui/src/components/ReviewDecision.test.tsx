@@ -115,3 +115,46 @@ describe("reviewer session", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("ReviewDecision channel autonomy", () => {
+  const base = { eligible: false, blockers: [] as string[], receipt: null, can_apply_locally: true };
+
+  it("lets a locked reviewer unlock a PR-only proposal but never offers local apply", () => {
+    const pr = { ...base, mode: "pull_request" as const, blockers: ["pull_request"], can_apply_locally: false };
+    render(<ReviewDecision detail={{ ...detail(), autonomy: pr }} onChanged={() => {}} />);
+    expect(screen.getByRole("button", { name: /unlock reviewer session/i })).toBeTruthy();
+    expect(screen.getByTestId("autonomy-decision").textContent).toMatch(/GitHub panel/);
+    cleanup();
+    reviewerSession.set(TOKEN, "r");
+    render(<ReviewDecision detail={{ ...detail({ status: "approved", reviewed_by: "r" }), autonomy: pr }} onChanged={() => {}} />);
+    expect(screen.queryByRole("button", { name: /apply locally/i })).toBeNull();
+    expect(screen.getByText(/Continue in the GitHub publishing panel/)).toBeTruthy();
+  });
+
+  it("shows a delegated application as such, never as a human approval", () => {
+    const receipt = { proposal_id: "prop-1", run_id: "run-1", document_id: "help-001", channel_id: "help-center",
+      policy_version: 2, original_sha256: "a", proposed_sha256: "b", applied_version: 4, applied_at: "2026-11-07T10:00:00+00:00" };
+    render(<ReviewDecision detail={{ ...detail({ status: "applied", applied_version: 4 }), autonomy: { ...base, mode: "bounded_auto", receipt } }} onChanged={() => {}} />);
+    const box = screen.getByTestId("autonomy-decision");
+    expect(box.textContent).toMatch(/Delegated local application/);
+    expect(box.textContent).toMatch(/No human patch approval/);
+    expect(screen.getByText(/Applied under channel delegation as/)).toBeTruthy();
+    expect(screen.queryByText(/Reviewer:/)).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("explains withheld automatic application with readable reasons", () => {
+    const withheld = { ...base, mode: "bounded_auto" as const, blockers: ["unknown_findings", "policy_sensitive_exception"] };
+    render(<ReviewDecision detail={{ ...detail(), autonomy: withheld }} onChanged={() => {}} />);
+    const text = screen.getByTestId("autonomy-decision").textContent ?? "";
+    expect(text).toMatch(/withheld automatic application/);
+    expect(text).toMatch(/the run left UNKNOWN findings/);
+    expect(text).toMatch(/statutory rights or existing commitments/);
+    expect(text).not.toMatch(/unknown_findings/);
+  });
+
+  it("states the manual-only boundary for protected channels", () => {
+    render(<ReviewDecision detail={{ ...detail(), autonomy: { ...base, mode: "manual_only", can_apply_locally: false } }} onChanged={() => {}} />);
+    expect(screen.getByTestId("autonomy-decision").textContent).toMatch(/cannot create or apply corrections/);
+  });
+});

@@ -2865,6 +2865,14 @@ ins {
   }
 }
 /* Public jury profile: operational styling is unchanged outside these components. */
+.autonomy-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:18px;margin:24px 0;}
+.autonomy-channel {padding:22px;border:1px solid var(--line);background:var(--paper,#fff);}
+.autonomy-channel h2 {font-size:17px;margin:0 0 12px;}
+.autonomy-channel p {line-height:1.65;}
+.autonomy-channel strong {font-size:13px;}
+.autonomy-channel .field {margin:16px 0;}
+.autonomy-channel select,.autonomy-channel input {padding:9px;background:white;color:var(--ink);border:1px solid var(--line);font:inherit;width:100%;}
+.autonomy-decision {margin:16px 0;overflow-wrap:anywhere;}
 .jury-banner { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:16px 28px; border-bottom:1px solid var(--line); background:#eef3e8; flex-wrap:wrap; font-size:12px; }
 .jury-banner strong,.jury-banner span {display:block;}
 .jury-banner span {margin-top:4px; color:var(--ink-3);}
@@ -2885,3 +2893,13 @@ ins {
 .eyebrow {font-size:11px; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-3);}
 @media(max-width:1100px){.jury-cards{grid-template-columns:repeat(2,minmax(0,1fr));}}
 @media(max-width:650px){.jury-cards{grid-template-columns:1fr;}.jury-banner{padding:12px;gap:10px;}.jury-banner label{flex-wrap:wrap;}.jury-guide .ph h1{letter-spacing:-1px;}}
+
+.delegated-tag {
+  padding: 0 5px;
+  border: 1px solid var(--accent-line);
+  border-radius: 4px;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 16px;
+}

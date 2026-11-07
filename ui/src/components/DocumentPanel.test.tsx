@@ -26,3 +26,24 @@ it("shows the protected-channel editing boundary even for an outdated finding", 
   expect(screen.getByText(/Legal and CRM documents require a separate manual editing workflow/)).toBeTruthy();
   expect(screen.queryByRole("button", { name: /approve|apply|publish/i })).toBeNull();
 });
+
+it("shows the channel autonomy ceiling and marks delegated applications", () => {
+  const doc = { ...document("manual_only"), channel: "help-center",
+    proposals: [{ id: "prop-a", status: "applied" as const, base_version: 1, policy_version: 2,
+      created_at: "2026-11-07T10:00:00Z", created_by: "agent:cominty:a", delegated_application: true }] };
+  const channelPolicy = { id: "help-center", name: "Help Center", audience: "public" as const, channel_id: "help-center",
+    version: 1, mode: "bounded_auto" as const, effective_mode: "bounded_auto" as const, max_per_run: 1,
+    allowed_modes: ["review_required" as const, "bounded_auto" as const], schema_available: true, persisted: true,
+    configuration_valid: true, updated_at: null, updated_by: "local-reviewer", note: "Delegate simple fixes." };
+  render(<DocumentPanel doc={doc} policy={policy} channel={undefined} onClose={vi.fn()} channelPolicy={channelPolicy} historical />);
+  const note = screen.getByTestId("channel-policy").textContent ?? "";
+  expect(note).toMatch(/Bounded local auto-application/);
+  expect(note).toMatch(/revision 1/);
+  expect(note).toMatch(/authorizes nothing/);
+  expect(screen.getByText("delegated")).toBeTruthy();
+});
+
+it("renders without autonomy data (no channel note, no crash)", () => {
+  render(<DocumentPanel doc={document("needs_clarification")} policy={policy} channel={undefined} onClose={vi.fn()} />);
+  expect(screen.queryByTestId("channel-policy")).toBeNull();
+});

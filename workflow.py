@@ -454,6 +454,15 @@ def _review(store: Store, proposal_id: str, token: str | None, action: str,
                                current_policy_version=policy.version if policy else None)
             fields: dict[str, Any] = {"status": new_status}
             if action == "apply":
+                import autonomy
+                if autonomy.policy(store,doc.channel,conn)['effective_mode']=='pull_request':
+                    raise GuardrailViolation('Website corrections require the human-approved GitHub PR workflow')
+                # Human review still revalidates exact content guardrails at write time.
+                _, stale = _policy_context(store,proposal.policy_id,conn)
+                violations,_=check_guardrails(proposal.original_content,proposal.proposed_content,
+                    current_days=policy.voluntary_return_days,stale=stale,evidence=proposal.evidence,
+                    effective_from=policy.effective_from)
+                if violations:raise GuardrailViolation('Approved patch no longer passes content guardrails',violations=violations)
                 version = proposal.base_version + 1
                 conn.execute("INSERT INTO document_versions VALUES (?, ?, ?, ?, ?)",
                              (proposal.document_id, version, proposal.proposed_content, now(),
@@ -551,6 +560,8 @@ def open_run(store: Store, policy_id: str, document_ids: list[str], *, actor: st
              created.isoformat(), (created + ttl).isoformat(), agent_id, json.dumps(versions),
              (created + min(ttl, RUN_LEASE)).isoformat(),
              json.dumps(config.safe_metadata(metadata or {}))))
+        import autonomy
+        autonomy.pin_run(store,run_id,docs,conn)
         store.add_event(conn, "agent.run_started", actor=actor, subject=("run", run_id),
                         metadata={**(metadata or {}), "run_id": run_id, "agent_id": agent_id,
                                   "policy_id": policy_id, "policy_version": policy.version,
@@ -869,7 +880,7 @@ def ingest_agent_reply(store: Store, reply: str, *, actor: str,
                         proposed_content=entry.get('proposed_content') if run.metadata.get('discovery') else None)
             retrieval = retrieval_status(store, run, conn)
             complete = retrieval['complete'] and all(f.category != 'UNKNOWN' for f in recorded.values())
-            final_metadata = {**(metadata or {}), 'retrieval': retrieval}
+            final_metadata = {**(metadata or {}), 'retrieval': retrieval,'reconciliation':'verified_reply_v1'}
             if run.metadata.get('discovery'):
                 from discovery import validate_search_strategy
                 strategy = validate_search_strategy(store, run, conn)
@@ -927,6 +938,14 @@ def ingest_agent_reply(store: Store, reply: str, *, actor: str,
             close_run(store, run_id, status='completed' if complete else 'incomplete', actor=actor,
                       provenance=provenance, metadata=final_metadata,
                       error=None if complete else summary['errors'][0]['error'], _conn=conn)
+            import autonomy
+            applied=autonomy.apply_pending(store,run_id,conn)
+            if applied:
+                summary['auto_applications']=applied
+                # This is local mutation evidence, not a replacement agent classification.
+                current_run=store.run(run_id,conn)
+                updated={**current_run.metadata,'auto_applications':applied}
+                conn.execute('UPDATE agent_runs SET metadata=? WHERE id=?',(json.dumps(config.safe_metadata(updated)),run_id))
     except WorkflowError as exc:
         diagnostic = config.safe_metadata({'error': str(exc), 'code': exc.code,
             **({'document_id': document_id} if document_id else {}),

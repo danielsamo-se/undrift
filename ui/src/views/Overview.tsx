@@ -150,7 +150,7 @@ function Overview({ snap, proposals, reload }: { snap: ImpactSnapshot; proposals
           )}
           {next.kind === "apply" && (
             <button className="btn btn-primary" onClick={() => navigate("review", next.proposalId)}>
-              Apply approved correction: {next.title} <ArrowRight size={13} aria-hidden />
+              Continue approved correction: {next.title} <ArrowRight size={13} aria-hidden />
             </button>
           )}
           {next.kind === "analyse" && (

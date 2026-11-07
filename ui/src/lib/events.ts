@@ -54,7 +54,7 @@ export function groupOf(type: string): EventGroup {
   if (type.startsWith("mcp.")) return "mcp";
   if (type.startsWith("agent.") || type.startsWith("finding.")) return "agent";
   if (type.startsWith("policy.") || type.startsWith("impact.")) return "policy";
-  if (type.startsWith("proposal.") || type.startsWith("document.")) return "review";
+  if (type.startsWith("proposal.") || type.startsWith("document.") || type.startsWith('autonomy.')) return "review";
   if (type.startsWith("auth.")) return "security";
   return "system";
 }
@@ -164,6 +164,12 @@ export function describeEvent(e: ActivityEvent): EventView {
       return { ...base, tone: "neutral", icon: "x", title: "Proposal rejected", detail: str(m.document_id), link: `#/review/${str(e.subject_id)}` };
     case "proposal.applied":
       return { ...base, tone: "success", icon: "send", title: "Proposal applied", detail: str(m.document_id), link: `#/review/${str(e.subject_id)}` };
+    case 'proposal.auto_applied':
+      return { ...base, tone: 'success', icon: 'shield', title: 'Correction applied under channel delegation', detail: `${str(m.document_id)} · delegation revision ${str(m.autonomy_version)} · local store only`, link: `#/review/${str(e.subject_id)}` };
+    case 'autonomy.policy_changed':
+      return { ...base, tone: 'brand', icon: 'shield', title: 'Channel delegation changed', detail: `${str(m.channel_id)} · ${str(m.mode)} · future runs only`, link: '#/autonomy' };
+    case 'autonomy.application_denied':
+      return { ...base, tone: 'warning', icon: 'shield', title: 'Automatic application withheld', detail: Array.isArray(m.blockers) ? m.blockers.map(x => str(x).replaceAll('_',' ')).join('; ') : '', link: `#/review/${str(e.subject_id)}` };
     case "document.version_created":
       return { ...base, tone: "success", icon: "file-check", title: `${str(m.document_id)} saved as v${str(m.version)}`, detail: "Local demo store" };
     case "auth.denied":

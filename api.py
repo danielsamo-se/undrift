@@ -28,6 +28,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import config
 import clarification
+import autonomy
 import readmodel
 import workflow
 from store import Store
@@ -65,6 +66,14 @@ class PolicyChangeBody(BaseModel):
     voluntary_return_days: int
     effective_from: date
     description: str = Field(min_length=1, max_length=4000)
+
+
+class AutonomyBody(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    expected_version: int = Field(ge=0,strict=True)
+    mode: str
+    max_per_run: int = Field(default=1,ge=1,le=3,strict=True)
+    note: str = Field(min_length=1,max_length=1000)
 
 
 class PublishBody(BaseModel):
@@ -221,17 +230,20 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
 
     async def proposal(request: Request) -> JSONResponse:
         pid = request.path_params["proposal_id"]
-        p = store.proposal(pid)
-        if p is None:
-            raise workflow.NotFound(f"unknown proposal {pid!r}")
-        audit = store.events(subject=("proposal", pid), limit=MAX_EVENTS)
-        created = next((e for e in audit if e.type == "proposal.created"), None)
-        doc, pol = store.document(p.document_id), store.policy(p.policy_id)
+        with store.snapshot() as c:
+            p = store.proposal(pid)
+            if p is None:
+                raise workflow.NotFound(f"unknown proposal {pid!r}")
+            audit = store.events(subject=("proposal", pid), limit=MAX_EVENTS)
+            created = next((e for e in audit if e.type == "proposal.created"), None)
+            doc, pol = store.document(p.document_id), store.policy(p.policy_id)
+            autonomy_decision=autonomy.decision(store,p,c)
         return JSONResponse({
             "proposal": p.model_dump(mode="json"),
             "evidence": p.evidence or _legacy_proposal_evidence(p, store, runs_dir),
             "events": [e.model_dump(mode="json") for e in audit],
             "review_flags": (created.metadata.get("review_flags") or []) if created else [],
+            'autonomy':autonomy_decision,
             "checks": {
                 "document_current_version": doc.version if doc else None,
                 "policy_current_version": pol.version if pol else None,
@@ -277,6 +289,18 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
         reviewer = await run_in_threadpool(workflow.authorize, store, _token(request), "session.verify",
                                            ("session", "reviewer"))
         return JSONResponse({"reviewer": reviewer})
+
+    async def autonomy_settings(request: Request) -> JSONResponse:
+        if request.method=='POST':
+            # Authenticate before parsing or inspecting a channel.
+            await run_in_threadpool(workflow.authorize,store,_token(request),'autonomy.configure',('channel',request.path_params['channel_id']))
+            body=await _body(request,AutonomyBody)
+            item=await run_in_threadpool(autonomy.configure,store,request.path_params['channel_id'],
+                                        token=_token(request),**body.model_dump())
+            return JSONResponse({'policy':item})
+        with store.snapshot() as c:
+            return JSONResponse({'channels':autonomy.listing(store,c),'global_run_limit':3,
+                                 'scope':'local_database_only','historical':False})
 
     async def conversations(_: Request) -> JSONResponse:
         await run_in_threadpool(store.reap_runs)
@@ -348,6 +372,8 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
     app = Starlette(
         routes=[
             Route("/api/health", health),
+            Route('/api/autonomy',autonomy_settings),
+            Route('/api/autonomy/{channel_id}',autonomy_settings,methods=['POST']),
             Route('/api/reliability', reliability_report),
             Route("/api/events", events),
             Route("/api/documents", documents),

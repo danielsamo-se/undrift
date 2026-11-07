@@ -14,6 +14,11 @@ export function useProposals() {
   return useResource((signal) => api.proposals(undefined, signal), latestSeq);
 }
 
+export function useAutonomy() {
+  const { latestSeq } = useLive();
+  return useResource((signal) => api.autonomy(signal), latestSeq);
+}
+
 export function useRuns() {
   const { latestSeq } = useLive();
   return useResource((signal) => api.runs(signal), latestSeq);

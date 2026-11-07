@@ -90,6 +90,8 @@ export interface ProposalSummary {
   policy_version: number;
   created_at: string;
   created_by: string;
+  /** Applied by the bounded local finalizer under channel delegation; never a human approval. */
+  delegated_application?: boolean;
 }
 
 export interface ImpactDocument {
@@ -259,6 +261,7 @@ export interface ReviewFlag {
 }
 
 export interface ProposalDetail {
+  autonomy?: AutonomyDecision;
   evidence?: string;
   proposal: Proposal;
   events: ActivityEvent[];
@@ -269,6 +272,23 @@ export interface ProposalDetail {
     document_unchanged: boolean;
     policy_current: boolean;
   };
+}
+
+export type AutonomyMode = 'review_required' | 'bounded_auto' | 'pull_request' | 'manual_only';
+export interface AutonomyPolicy extends Channel {
+  channel_id: string; version: number; mode: AutonomyMode; effective_mode: AutonomyMode;
+  max_per_run: number; allowed_modes: AutonomyMode[]; schema_available: boolean;
+  persisted: boolean; configuration_valid: boolean; updated_at: string | null;
+  updated_by: string | null; note: string;
+}
+export interface AutonomySnapshot {
+  channels: AutonomyPolicy[]; global_run_limit: number; scope: string; historical: boolean;
+}
+export interface AutonomyDecision {
+  mode: AutonomyMode; policy_version?: number; channel_id?: string; eligible: boolean;
+  blockers: string[]; can_apply_locally: boolean; future_runs_only?: boolean;
+  receipt: null | { proposal_id: string; run_id: string; document_id: string; channel_id: string;
+    policy_version: number; original_sha256: string; proposed_sha256: string; applied_version: number; applied_at: string };
 }
 
 export interface Publication {

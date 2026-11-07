@@ -51,6 +51,10 @@ def test_non_local_requests_are_refused(changed: Store, client_host: str, host_h
 
 
 def test_review_endpoints_require_the_token(client: TestClient, changed: Store, token: str) -> None:
+    # Exercise the local review path on a local channel; Website now requires a PR.
+    with changed.write() as c:
+        c.execute("INSERT INTO channels VALUES ('help-center','Help Center','public')")
+        c.execute("UPDATE documents SET channel_id='help-center' WHERE id='doc-001'")
     p = propose(changed)
     assert client.post(f"/api/proposals/{p.id}/approve", json={}).status_code == 401
     r = client.post(f"/api/proposals/{p.id}/approve", json={"note": "agent says OK"},

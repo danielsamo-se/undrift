@@ -24,7 +24,8 @@ import config
 import fixtures
 from models import AgentRun, Document, Event, Finding, Policy, Proposal
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
+AUTONOMY_SCHEMA_VERSION = 6
 EVENT_TYPE_RE = re.compile(r"^[a-z_]+(\.[a-z_]+)+$")
 SYSTEM = "system"
 
@@ -216,8 +217,13 @@ class Store:
                 conn.execute("COMMIT")
             conn.close()
 
-    def init(self, seed: bool = True) -> bool:
-        """Transactional, additive v1/v2/v3 migration. Never resets policies or proposals."""
+    def init(self, seed: bool = True, *, enable_autonomy: bool = False) -> bool:
+        """Transactional, additive migration. Never resets policies or proposals.
+
+        A v5 database is left byte-for-byte untouched unless enable_autonomy=True: starting a
+        service against a frozen evaluation or demo database must not rewrite it. New databases
+        and older ones (which are migrated anyway) receive the current schema.
+        """
         self.path.parent.mkdir(parents=True, exist_ok=True)
         conn = self.connect()
         try:
@@ -230,7 +236,10 @@ class Store:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
             if version > SCHEMA_VERSION:
                 raise RuntimeError("database schema is newer than this application")
-            if version < SCHEMA_VERSION:
+            target = SCHEMA_VERSION
+            if version == AUTONOMY_SCHEMA_VERSION - 1 and not enable_autonomy:
+                target = version
+            if version < target:
                 if version == 2:
                     conn.execute("ALTER TABLE findings RENAME TO findings_v2")
                     conn.execute("ALTER TABLE agent_runs RENAME TO agent_runs_v2")
@@ -267,10 +276,13 @@ class Store:
                 from clarification_schema import STATEMENTS as CLARIFICATION_STATEMENTS
                 for statement in CLARIFICATION_STATEMENTS:
                     conn.execute(statement)
+                from autonomy_schema import STATEMENTS as AUTONOMY_STATEMENTS
+                for statement in AUTONOMY_STATEMENTS:
+                    conn.execute(statement)
                 conn.execute("DELETE FROM document_search")
                 conn.execute("INSERT INTO document_search SELECT d.id, d.channel_id, v.version, d.title, v.content "
                              "FROM documents d JOIN document_versions v ON v.document_id=d.id AND v.version=d.current_version")
-                conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+                conn.execute(f"PRAGMA user_version = {target}")
             conn.execute("COMMIT")
         except BaseException:
             if conn.in_transaction:
@@ -423,8 +435,8 @@ class Store:
         with self.read() as c:
             return [r[0] for r in c.execute("SELECT id FROM documents ORDER BY id")]
 
-    def channels(self) -> list[dict[str, str]]:
-        with self.read() as c:
+    def channels(self, conn=None) -> list[dict[str, str]]:
+        with self.read(conn) as c:
             return [dict(r) for r in c.execute("SELECT * FROM channels ORDER BY id")]
 
     @staticmethod

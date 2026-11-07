@@ -11,6 +11,7 @@ import { ImpactView } from "./views/Impact";
 import { OverviewView } from "./views/Overview";
 import { ReviewView } from "./views/Review";
 import { ReliabilityView } from './views/Reliability';
+import { AutonomyView } from './views/Autonomy';
 import { JuryProvider, JuryBanner, JuryGuide, useJury } from './lib/jury';
 
 const NAV: { view: View; label: string; icon: LucideIcon; key: string }[] = [
@@ -19,6 +20,7 @@ const NAV: { view: View; label: string; icon: LucideIcon; key: string }[] = [
   { view: "review", label: "Review", icon: GitPullRequest, key: "3" },
   { view: "activity", label: "Activity", icon: Activity, key: "4" },
   { view: 'reliability', label: 'Reliability', icon: ShieldCheck, key: '5' },
+  { view: 'autonomy', label: 'Channel autonomy', icon: ShieldCheck, key: '6' },
 ];
 
 export function Mark({ size = 20 }: { size?: number }) {
@@ -104,6 +106,7 @@ function Shell() {
         {route.view === "review" && <ReviewView selectedId={route.param} />}
         {route.view === "activity" && <ActivityView focusRun={route.param} />}
         {route.view === 'reliability' && <ReliabilityView />}
+        {route.view === 'autonomy' && <AutonomyView />}
       </main>
     </div>
   );

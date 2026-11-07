@@ -1,17 +1,43 @@
 import { ArrowRight, CircleCheck, Globe, Lock, TriangleExclamationPoint, X } from "lucide-react";
 import { useEffect, useRef } from "react";
-import type { Channel, ImpactDocument, Policy } from "../api/types";
+import type { AutonomyPolicy, Channel, ImpactDocument, Policy } from "../api/types";
 import { PREFILTER_LABEL, isStale, statusOf } from "../lib/classification";
 import { highlight } from "../lib/diff";
 import { formatDateTime, relativeTime, shortId } from "../lib/format";
 import { navigate } from "../lib/hooks";
+import { MODE_LABELS } from "../views/Autonomy";
 import { DocVersion, PolicyVersion, ProposalState, Status } from "./ui";
 
-export function DocumentPanel({ doc, channel, policy, onClose }: {
+const MODE_NOTE: Record<AutonomyPolicy["effective_mode"], string> = {
+  review_required: "Corrections need human approval and a separate local application.",
+  bounded_auto: "Delegated for future runs: one verified single-sentence correction may be applied to the local store automatically; everything else waits for review.",
+  pull_request: "Corrections publish only through the human-approved GitHub PR workflow. No direct local application.",
+  manual_only: "Protected channel. Undrift identifies inconsistencies here but never creates or applies corrections.",
+};
+
+export function ChannelPolicyNote({ policy: p, historical = false }: { policy: AutonomyPolicy | undefined; historical?: boolean }) {
+  if (!p) return null;
+  return (
+    <div className="insp-block" data-testid="channel-policy">
+      <h3>Channel autonomy</h3>
+      <p>
+        <strong>{MODE_LABELS[p.effective_mode]}</strong>
+        {p.effective_mode === "bounded_auto" && ` · up to ${p.max_per_run} per run`}
+        {p.persisted ? ` · revision ${p.version}` : " · conservative default"}
+      </p>
+      <p className="muted small">{MODE_NOTE[p.effective_mode]}</p>
+      {historical && <p className="muted small">Recorded setting in a read-only replay; it authorizes nothing.</p>}
+    </div>
+  );
+}
+
+export function DocumentPanel({ doc, channel, policy, onClose, channelPolicy, historical = false }: {
   doc: ImpactDocument;
   channel: Channel | undefined;
   policy: Policy;
   onClose: () => void;
+  channelPolicy?: AutonomyPolicy;
+  historical?: boolean;
 }) {
   const status = statusOf(doc);
   const f = doc.finding;
@@ -57,6 +83,8 @@ export function DocumentPanel({ doc, channel, policy, onClose }: {
           </p>
         )}
       </div>
+
+      <ChannelPolicyNote policy={channelPolicy} historical={historical} />
 
       {f?.action === "needs_clarification" && <p className="note note-warn">Human clarification required. Resolve the missing context in the finding reason before correcting this document.</p>}
       {f?.action === "manual_only" && <p className="note note-warn">Protected channel. Legal and CRM documents require a separate manual editing workflow; no automated correction is permitted.</p>}
@@ -122,6 +150,7 @@ export function DocumentPanel({ doc, channel, policy, onClose }: {
               <li key={p.id}>
                 <button className="row-link" onClick={() => navigate("review", p.id)}>
                   <ProposalState status={p.status} />
+                  {p.delegated_application && <span className="delegated-tag" title="Applied under channel delegation; no human patch approval">delegated</span>}
                   <span className="muted">
                     <DocVersion version={p.base_version} /> · <PolicyVersion version={p.policy_version} /> · {relativeTime(p.created_at)}
                   </span>

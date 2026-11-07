@@ -8,6 +8,7 @@
     python cli.py approve|reject <proposal_id> [--note ...]
     python cli.py apply <proposal_id>
     python cli.py copy-token                   # review token to the clipboard (never printed)
+    python cli.py enable-autonomy              # explicit, reviewer-authorized v5 -> v6 upgrade
 
 Review commands read UNDRIFT_REVIEW_TOKEN from the environment or .env; they fail without it.
 """
@@ -47,6 +48,7 @@ def main() -> int:
     cp.add_argument("--description")
     sub.add_parser("status")
     sub.add_parser("copy-token")
+    sub.add_parser("enable-autonomy")
     ev = sub.add_parser("events")
     ev.add_argument("--after", type=int, default=0)
     ev.add_argument("--limit", type=int, default=50)
@@ -99,6 +101,17 @@ def main() -> int:
             subprocess.run(["clip"], input=token, text=True, check=True)
             print("Review token copied to the clipboard (not shown). Paste it into the UI's "
                   "reviewer dialog; it is kept in memory only.")
+        elif args.cmd == "enable-autonomy":
+            # Additive: creates delegation tables with conservative defaults; grants nothing.
+            reviewer = workflow.authorize(store, token, "autonomy.enable_schema",
+                                          ("database", store.path.name))
+            store.init(seed=False, enable_autonomy=True)
+            store.record_event("autonomy.schema_enabled", actor=f"reviewer:{reviewer}",
+                               subject=("database", store.path.name),
+                               metadata={"database": store.path.name, "schema_version": 6,
+                                         "delegations_granted": 0})
+            print(f"Channel autonomy schema enabled for {store.path}. All channels remain at "
+                  "their conservative defaults until a reviewer delegates future runs.")
         elif args.cmd == "events":
             for e in store.events(after=args.after, limit=args.limit, type_prefix=args.type):
                 subject = f"{e.subject_type}:{e.subject_id}" if e.subject_type else "-"

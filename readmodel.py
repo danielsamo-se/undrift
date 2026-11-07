@@ -162,10 +162,18 @@ def agent_runs(store: Store, runs_dir: Path = RUNS_DIR,
     return result
 
 
-def _proposal_summary(p: Any) -> dict[str, Any]:
+def _proposal_summary(p: Any, delegated: frozenset[str] = frozenset()) -> dict[str, Any]:
+    # delegated: applied under channel delegation (immutable receipt), never a human approval.
     return {"id": p.id, "status": p.status, "base_version": p.base_version,
             "policy_version": p.policy_version, "created_at": p.created_at.isoformat(),
-            "created_by": p.created_by}
+            "created_by": p.created_by, "delegated_application": p.id in delegated}
+
+
+def _delegated_proposals(store: Store) -> frozenset[str]:
+    with store.read() as c:
+        if not c.execute("SELECT 1 FROM sqlite_master WHERE name='autonomy_applications'").fetchone():
+            return frozenset()
+        return frozenset(r[0] for r in c.execute("SELECT proposal_id FROM autonomy_applications"))
 
 
 @consistent_projection
@@ -179,6 +187,7 @@ def impact_snapshot(store: Store, policy_id: str, runs_dir: Path = RUNS_DIR) -> 
     states = {r.id: r for r in store.runs()}
     candidates = {c.document_id: c for c in workflow.detect_candidates(store, policy_id)}
     proposals = store.proposals()
+    delegated = _delegated_proposals(store)
     findings = [f for f in store.findings() if f.policy_id == policy_id]
     records = run_records(runs_dir)
     documents = []
@@ -227,7 +236,7 @@ def impact_snapshot(store: Store, policy_id: str, runs_dir: Path = RUNS_DIR) -> 
                           "protected" if c else "not_stale",
                           "stale_sentences": c.stale_sentences if c else [],
                           "protected": {str(k): v for k, v in c.protected.items()} if c else {}},
-            "proposals": [_proposal_summary(p) for p in proposals if p.document_id == doc.id],
+            "proposals": [_proposal_summary(p, delegated) for p in proposals if p.document_id == doc.id],
         })
     with store.read() as conn:
         title = conn.execute("SELECT title FROM policies WHERE id = ?", (policy_id,)).fetchone()[0]

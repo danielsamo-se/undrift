@@ -13,6 +13,7 @@ import type {
   PublicationPlan,
   Conversation,
   ReliabilityReport,
+  AutonomySnapshot, AutonomyPolicy, AutonomyMode,
 } from "./types";
 
 export class ApiError extends Error {
@@ -82,6 +83,9 @@ function authorized<T>(path: string, body: unknown): Promise<T> {
 const enc = encodeURIComponent;
 
 export const api = {
+  autonomy: (signal?: AbortSignal) => request<AutonomySnapshot>('/api/autonomy', { signal }),
+  configureAutonomy: (channel: string, body: { expected_version: number; mode: AutonomyMode; max_per_run: number; note: string }) =>
+    authorized<{ policy: AutonomyPolicy }>(`/api/autonomy/${enc(channel)}`, body),
   reliability: (signal?: AbortSignal, series?: string) =>
     request<ReliabilityReport>(`/api/reliability${series ? `?series=${enc(series)}` : ''}`, { signal }),
   conversations: (signal?: AbortSignal) => request<{ conversations: Conversation[] }>('/api/conversations', { signal }),
