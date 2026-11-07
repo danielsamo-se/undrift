@@ -40,7 +40,9 @@ REPORT = reliability.DEFAULT_REPORT
 TRUTH = ROOT / 'tests/data/discovery_ground_truth.json'
 SOURCES = ['run_impact.py','workflow.py','clarification.py','clarification_schema.py','discovery.py',
            'discovery_seed.py','store.py','models.py','fixtures.py','server.py','config.py','reliability.py',
-           'scripts/reliability_evaluation.py','scripts/evaluate_clarification.py','scripts/evaluation_service.py','scripts/evaluation_services.ps1']
+           'scripts/reliability_evaluation.py','scripts/evaluate_clarification.py','scripts/evaluation_service.py','scripts/evaluation_services.ps1',
+           'api.py','readmodel.py','ui/src/views/Reliability.tsx','ui/src/api/client.ts','ui/src/api/types.ts',
+           'ui/src/components/Clarifications.tsx']
 HOST = 'chatter-poker-theorize.ngrok-free.dev'
 CONNECTION = 'undrift_mcp_ngrok'
 MODEL = 'Claude Sonnet 5.5 (High)'
@@ -193,7 +195,8 @@ async def attestation(store):
         # No accepted result or diagnostic run is created by this negative auth check.
         assert (await mcp.call_tool('get_policy',{'policy_id':'shiftly-returns'})).is_error
     async with httpx.AsyncClient(timeout=20) as web:
-        assert (await web.get('http://127.0.0.1:8401/api/health')).json()['database']==store.path.name
+        api_health=(await web.get('http://127.0.0.1:8401/api/health')).json()
+        assert api_health['database']==store.path.name and api_health['database_id']==store.identity()
         tunnels=(await web.get('http://127.0.0.1:4040/api/tunnels')).json()['tunnels']
         tunnel=next(t for t in tunnels if t['public_url']=='https://'+HOST)
         assert tunnel['config']['inspect'] is False and tunnel['config']['addr']=='http://127.0.0.1:8001'
@@ -204,8 +207,19 @@ async def attestation(store):
 async def freeze():
     plan=json.loads(PLAN.read_text(encoding='utf-8')); configure(plan['slots'][0])
     assert not PROTOCOL.exists()
+    require(not subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip(),
+            'Checkpoint the prepared implementation and report before freezing')
+    prepared=json.loads(REPORT.read_text(encoding='utf-8'))
+    require(prepared['state']=='prepared' and not prepared['results'] and not list(PRIVATE.glob('attempt-*.json')),
+            'Only a fresh zero-dispatch study can be frozen')
+    assert all(not Store(ROOT/s['database']).runs() and domain(Store(ROOT/s['database']))==s['domain'] for s in plan['slots'])
     metadata=await attestation(Store(ROOT/plan['slots'][0]['database']))
     protocol={'version':reliability.VERSION,'series_id':SERIES,'lifecycle':LIFECYCLE,'frozen_at':datetime.now(UTC).isoformat(), 'remote':metadata,
+        'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
+        'plan_sha256':file_hash(PLAN),
+        'stores':[{'slot':s['slot'],'database_id':s['database_id'],'seed_sha256':s['seed_sha256']} for s in plan['slots']],
+        'ui_sha256':{str(p.relative_to(ROOT/plan['slots'][0]['ui_directory'])).replace('\\','/'):file_hash(p)
+                     for p in sorted((ROOT/plan['slots'][0]['ui_directory']).rglob('*')) if p.is_file()},
         'instructions_raw_sha256':file_hash(ROOT/'agents/discovery.md'), 'corpus_sha256':digest(manifest()),
         'seed_sha256':seed_hash(), 'rubric_sha256':file_hash(TRUTH), 'answer_fixture_version':'unavailable-facts-v1',
         'answer_fixture_sha256':plan['answers_sha256'], 'source_sha256':{p:file_hash(ROOT/p) for p in SOURCES},
@@ -218,13 +232,21 @@ async def freeze():
         'batch_stop_policy':'Stop on safety, authentication, isolation, provider/evidence inconsistency, unknown cost, interruption or spending/message limits.',
         'sdk_version':version('cominty-sdk'),
         'steps_measurement':'Reserved parent allowance plus unique llm correlation IDs; no exact consumed-step API.'}
+    assert_frozen(protocol,plan)
     write(PROTOCOL,protocol,True)
+    write(REPORT,{**prepared,'state':'frozen','protocol_sha256':file_hash(PROTOCOL),'protocol':protocol,
+                  'protected_historical_files_unchanged':True})
     print('Frozen protocol:',file_hash(PROTOCOL),'No paid messages started.')
 
 def assert_frozen(protocol,plan):
+    if 'plan_sha256' in protocol:
+        assert file_hash(PLAN)==protocol['plan_sha256'], 'Frozen store/identity plan changed'
     assert file_hash(TRUTH)==protocol['rubric_sha256'] and file_hash(PRIVATE/'answers.v1.json')==protocol['answer_fixture_sha256']
     assert all(file_hash(ROOT/p)==value for p,value in protocol['source_sha256'].items())
     assert digest(manifest())==protocol['corpus_sha256']
+    if 'ui_sha256' in protocol:
+        ui=ROOT/plan['slots'][0]['ui_directory']
+        assert {str(p.relative_to(ui)).replace('\\','/'):file_hash(p) for p in ui.rglob('*') if p.is_file()}==protocol['ui_sha256'], 'Staged frontend changed'
     assert all(file_hash(ROOT/p)==value for p,value in plan['protected_files'].items()), 'Historical evidence changed'
 
 def switch(slot):

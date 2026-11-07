@@ -147,20 +147,39 @@ def _legacy_proposal_evidence(proposal: Any, store: Store, runs_dir: Path) -> st
 def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
               ui_dir: Path | None = UI_DIST, publisher=None) -> ASGIApp:
     async def health(_: Request) -> JSONResponse:
-        return JSONResponse({"status": "ok", "database": store.path.name})
+        return JSONResponse({"status": "ok", "database": store.path.name,
+                             "database_id": await run_in_threadpool(store.identity)})
 
-    async def reliability_report(_: Request) -> JSONResponse:
+    async def reliability_report(request: Request) -> JSONResponse:
         import reliability
         def current():
+            import re
             report_path = os.environ.get('UNDRIFT_RELIABILITY_REPORT')
-            report = reliability.load_report(report_path)
             path = Path(report_path or reliability.DEFAULT_REPORT)
-            diagnosis = path.with_name('reliability-v1-stop-diagnosis.json')
+            active_match = re.fullmatch(r'(reliability-v[1-9][0-9]*)-results\.json', path.name)
+            active_series = active_match[1] if active_match else 'reliability-v1'
+            available = sorted(p.name.removesuffix('-results.json') for p in (config.ROOT / 'evaluations').glob('*-results.json')
+                               if re.fullmatch(r'reliability-v[1-9][0-9]*-results\.json', p.name))
+            selected = request.query_params.get('series', active_series)
+            if not re.fullmatch(r'reliability-v[1-9][0-9]*', selected):
+                raise workflow.WorkflowError('invalid reliability series')
+            if selected != active_series:
+                if selected not in available:
+                    raise workflow.NotFound('unknown reliability series')
+                path = config.ROOT / 'evaluations' / (selected + '-results.json')
+            report = reliability.load_report(path)
+            if report.get('series_id', selected) != selected:
+                raise workflow.Conflict('reliability report series identity mismatch')
+            # Read-only projection: historical artifact bytes are never rewritten.
+            report.update(series_id=selected, active_series_id=active_series,
+                          available_series=sorted(set(available) | {active_series}), archived=selected != active_series)
+            diagnosis = path.with_name(selected + '-stop-diagnosis.json')
             if diagnosis.exists() and path.exists():
                 import hashlib
                 import json
                 extra = json.loads(diagnosis.read_text(encoding='utf-8'))
-                canonical = hashlib.sha256(json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+                original = json.loads(path.read_text(encoding='utf-8'))
+                canonical = hashlib.sha256(json.dumps(original,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
                 if (extra.get('original_report_sha256') == hashlib.sha256(path.read_bytes()).hexdigest()
                         or extra.get('canonical_report_sha256') == canonical):
                     report['diagnosis'] = extra

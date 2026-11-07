@@ -97,6 +97,29 @@ def test_report_api_does_not_expose_answer_book_or_allow_arbitrary_files(store,t
     with pytest.raises(workflow.WorkflowError): reliability.load_report(tmp_path/'private.json')
 
 
+def test_report_series_selection_keeps_archives_separate_and_unchanged(store,tmp_path,monkeypatch):
+    monkeypatch.setattr(config,'ROOT',tmp_path)
+    folder=tmp_path/'evaluations'; folder.mkdir()
+    v1={'version':reliability.VERSION,'state':'stopped','results':[{'root_run_id':'historical'}],
+        'aggregate':reliability.aggregate([])}
+    v2={'version':reliability.VERSION,'series_id':'reliability-v2','state':'prepared','results':[],
+        'aggregate':reliability.aggregate([])}
+    for series,data in [('reliability-v1',v1),('reliability-v2',v2)]:
+        (folder/(series+'-results.json')).write_text(json.dumps(data))
+    before={p.name:p.read_bytes() for p in folder.iterdir()}
+    monkeypatch.setenv('UNDRIFT_RELIABILITY_REPORT',str(folder/'reliability-v2-results.json'))
+    client=TestClient(api.build_app(store,ui_dir=None),base_url='http://127.0.0.1',client=('127.0.0.1',1))
+    active=client.get('/api/reliability').json()
+    assert active['series_id']==active['active_series_id']=='reliability-v2' and not active['archived']
+    assert active['results']==[] and active['available_series']==['reliability-v1','reliability-v2']
+    archive=client.get('/api/reliability?series=reliability-v1').json()
+    assert archive['series_id']=='reliability-v1' and archive['archived']
+    assert archive['results']==v1['results'] and archive['active_series_id']=='reliability-v2'
+    assert client.get('/api/reliability?series=../private').status_code==400
+    assert client.get('/api/reliability?series=reliability-v99').status_code==404
+    assert before=={p.name:p.read_bytes() for p in folder.iterdir()}
+
+
 def test_frozen_source_or_fixture_change_is_detected(tmp_path,monkeypatch):
     monkeypatch.setattr(evaluator,'ROOT',tmp_path)
     monkeypatch.setattr(evaluator,'PRIVATE',tmp_path/'private')
@@ -110,6 +133,26 @@ def test_frozen_source_or_fixture_change_is_detected(tmp_path,monkeypatch):
     evaluator.assert_frozen(protocol,{'protected_files':{}})
     (tmp_path/'code.py').write_text('tuned')
     with pytest.raises(AssertionError): evaluator.assert_frozen(protocol,{'protected_files':{}})
+
+
+def test_frozen_plan_and_built_frontend_cannot_change(tmp_path,monkeypatch):
+    monkeypatch.setattr(evaluator,'ROOT',tmp_path)
+    monkeypatch.setattr(evaluator,'PRIVATE',tmp_path)
+    monkeypatch.setattr(evaluator,'PLAN',tmp_path/'plan.json')
+    monkeypatch.setattr(evaluator,'TRUTH',tmp_path/'truth.json')
+    monkeypatch.setattr(evaluator,'manifest',lambda:{})
+    for name in ['plan.json','truth.json','answers.v1.json']:
+        (tmp_path/name).write_text('{}')
+    ui=tmp_path/'ui'; ui.mkdir(); (ui/'index.html').write_text('frozen UI')
+    protocol={'plan_sha256':evaluator.file_hash(evaluator.PLAN),'rubric_sha256':evaluator.file_hash(evaluator.TRUTH),
+        'answer_fixture_sha256':evaluator.file_hash(tmp_path/'answers.v1.json'),'source_sha256':{},
+        'corpus_sha256':evaluator.digest({}),'ui_sha256':{'index.html':evaluator.file_hash(ui/'index.html')}}
+    plan={'slots':[{'ui_directory':'ui'}],'protected_files':{}}
+    evaluator.assert_frozen(protocol,plan)
+    evaluator.PLAN.write_text('changed identity')
+    with pytest.raises(AssertionError,match='plan changed'): evaluator.assert_frozen(protocol,plan)
+    evaluator.PLAN.write_text('{}'); (ui/'index.html').write_text('changed UI')
+    with pytest.raises(AssertionError,match='frontend changed'): evaluator.assert_frozen(protocol,plan)
 
 
 def test_executor_refuses_second_invocation_before_any_paid_work(tmp_path,monkeypatch):

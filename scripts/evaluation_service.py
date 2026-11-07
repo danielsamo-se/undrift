@@ -42,7 +42,10 @@ def main():
         UNDRIFT_RELIABILITY_REPORT=str(report))
     ui = (ROOT / active['ui_directory']).resolve()
     assert ui.is_relative_to((ROOT / '.test-tmp').resolve()) and (ui / 'index.html').is_file()
-    runtime = {'pid': os.getpid(), 'service': args.service, **active}
+    runtime = {'pid': os.getpid(), 'service': args.service, **active,
+               'source_sha256':{name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in
+                                ['api.py','server.py','clarification.py','discovery.py','workflow.py','reliability.py']},
+               'ui_index_sha256':hashlib.sha256((ui/'index.html').read_bytes()).hexdigest()}
     (args.config.parent / f'{args.service}-runtime.json').write_text(json.dumps(runtime, indent=2), encoding='utf-8')
     if args.service == 'mcp':
         import server

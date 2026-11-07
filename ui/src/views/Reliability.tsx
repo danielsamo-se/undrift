@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { api } from '../api/client';
 import type { ReliabilityReport } from '../api/types';
 import { ErrorState, LoadingBlock } from '../components/ui';
@@ -19,17 +20,29 @@ function value(number: number | null | undefined, percent = true) {
 }
 
 export function ReliabilityView() {
+  const [series, setSeries] = useState<string>();
   const tick = useNow(5000);
-  const { data, error, reload } = useResource(signal => api.reliability(signal), Math.floor(tick/5000));
+  const { data, error, reload } = useResource(signal => api.reliability(signal, series), `${series ?? 'active'}:${Math.floor(tick/5000)}`);
   if (error && !data) return <ErrorState error={error} onRetry={reload} />;
   if (!data) return <LoadingBlock rows={8} />;
-  return <Reliability report={data} />;
+  return <>
+    <label className="field"><span>Evaluation series</span>
+      <select value={series ?? data.active_series_id ?? data.series_id ?? 'reliability-v1'} onChange={e => setSeries(e.target.value)}>
+        {(data.available_series ?? [data.series_id ?? 'reliability-v1']).map(id =>
+          <option key={id} value={id}>{id}{id === data.active_series_id ? ' (active)' : ' (archived)'}</option>)}
+      </select>
+    </label>
+    {series && data.series_id !== series ? <LoadingBlock rows={8} /> : <Reliability report={data} />}
+    {error && <p role="alert">Series unavailable: {error.message}</p>}
+  </>;
 }
 
 export function Reliability({ report }: { report: ReliabilityReport }) {
   const a = report.aggregate;
   return <div className="page reliability-page">
     <header className="ph"><div><h1>Reliability</h1><p className="ph-sub">Frozen independent conversations · {report.state.replaceAll('_',' ')}</p></div></header>
+    <p><strong>{report.series_id ?? 'reliability-v1'}</strong> · {report.archived ? 'Archived study — preserved results' : 'Active study'}.
+      Each series has separate results and denominators; studies are never combined.</p>
     <div className="reliability-summary">
       <div><strong>{a.recorded_conversations} / {a.planned_conversations}</strong><span>Conversations recorded</span></div>
       <div><strong>{a.reconciled_conversations}</strong><span>Final reconciliations</span></div>

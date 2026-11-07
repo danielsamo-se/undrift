@@ -1,0 +1,60 @@
+{
+  "version": "reliability-v1",
+  "series_id": "reliability-v2",
+  "state": "prepared",
+  "evidence_kind": "real_cominty_evaluation",
+  "results": [],
+  "aggregate": {
+    "planned_conversations": 5,
+    "recorded_conversations": 0,
+    "not_started": 5,
+    "reconciled_conversations": 0,
+    "statuses": {},
+    "statistics": {
+      "duration_s": {
+        "minimum": null,
+        "mean": null,
+        "maximum": null,
+        "defined_count": 0,
+        "result_count": 0
+      },
+      "reserved_parent_steps": {
+        "minimum": null,
+        "mean": null,
+        "maximum": null,
+        "defined_count": 0,
+        "result_count": 0
+      },
+      "observed_llm_rounds": {
+        "minimum": null,
+        "mean": null,
+        "maximum": null,
+        "defined_count": 0,
+        "result_count": 0
+      },
+      "native_question_count": {
+        "minimum": null,
+        "mean": null,
+        "maximum": null,
+        "defined_count": 0,
+        "result_count": 0
+      },
+      "mcp_error_count": {
+        "minimum": null,
+        "mean": null,
+        "maximum": null,
+        "defined_count": 0,
+        "result_count": 0
+      }
+    },
+    "reported_total_cost": "0",
+    "cost_statistics": {
+      "minimum": null,
+      "mean": null,
+      "maximum": null,
+      "defined_count": 0
+    },
+    "message_count": 0
+  },
+  "stop_reason": null
+}
