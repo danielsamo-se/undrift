@@ -30,7 +30,8 @@ describe("buildExecution", () => {
       ev("mcp.tool_call", { ...R, tool: "get_document" }),
       ev("agent.retrieval", { ...R, kind: "document", version: 1 }, { subject_type: "document", subject_id: "help-102" }),
       ev("finding.recorded", { ...R, document_id: "help-101", category: "OUTDATED" }),
-      ev("agent.reply_rejected", { ...R, code: "search_strategy_violation" }, { status: "error", error: "discovery search-first contract was not satisfied", actor: "agent:cominty:x" }),
+      ev("agent.reply_rejected", { ...R, code: "search_strategy_violation", details: { observed: { distinct_formulated_queries_before_catalog: 3,
+        number_free_query: true, lead_followed: false, catalog_complete: true, search_calls: 4 } } }, { status: "error", error: "discovery search-first contract was not satisfied", actor: "agent:cominty:x" }),
       ev("agent.run_finished", { ...R, duration_s: 62 }, { status: "error", error: "discovery search-first contract was not satisfied", actor: "agent:cominty:x" }),
       ev("mcp.tool_call", { tool: "health_check" }), // not correlated with this run
     ];
@@ -50,6 +51,8 @@ describe("buildExecution", () => {
       ["outcome", "backend", "Run closed: not completed", 1],
     ]);
     expect(ex.stages.find((s) => s.id === "validate")?.status).toBe("error");
+    expect(ex.steps.find((s) => s.stage === "validate")?.note).toBe("Recorded contract checks: 3 distinct searches before the catalog · number-free search yes · search lead retrieved before the catalog no · catalog complete yes · 4 search calls");
+    expect(ex.steps.find((s) => s.title.includes("formulated"))?.items).toEqual(["“send back items” · 1 result · no numbers", "“return days 60 30” · 0 results"]);
     // Stages without recorded evidence stay empty instead of being inferred.
     expect(ex.stages.filter((s) => s.status === "none").map((s) => s.id)).toEqual(["clarify", "propose", "decide"]);
     expect(outcomeHeadline(run(), ex)).toBe("Cominty agent recorded 1 finding. Run failed: discovery search-first contract was not satisfied.");
@@ -83,6 +86,23 @@ describe("buildExecution", () => {
     ]);
     expect(ex.steps).toHaveLength(1);
     expect(ex.steps[0]).toMatchObject({ lane: "human", stage: "decide", items: ["doc-001 · prop-04"] });
+  });
+
+  it("correlates older archives by Cominty message ID and server-attributed MCP calls, never by time", () => {
+    const legacy = run({ status: "completed", errors: [], message_id: "msg-legacy", proposals: ["prop-04"],
+      mcp_calls: [{ seq: 901, ts: "", status: "ok", tool: "get_document", document_id: "doc-001", policy_id: null, version: 3, secret_slot: null, user_agent: null, duration_ms: 3, error: null }] });
+    const ex = buildExecution(legacy, [
+      ev("mcp.tool_call", { tool: "get_document", document_id: "doc-001", version: 3 }, { seq: 901 }),
+      ev("mcp.tool_call", { tool: "get_document", document_id: "doc-002", version: 1 }, { seq: 902 }),
+      ev("agent.classification", { category: "OUTDATED", provenance: { message_id: "msg-legacy" } }, { seq: 903, subject_type: "document", subject_id: "doc-001" }),
+      ev("agent.verdict_received", { reported_policy_version: 2, provenance: { message_id: "msg-legacy" } }, { seq: 904 }),
+      ev("agent.classification", { category: "UNRELATED", provenance: { message_id: "other" } }, { seq: 905, subject_type: "document", subject_id: "doc-009" }),
+    ]);
+    expect(ex.steps.map((s) => [s.title, s.items])).toEqual([
+      ["get_document", ["doc-001 · v3"]],
+      ["Classification in final reply", ["doc-001 → OUTDATED"]],
+      ["Final reply accepted", ["policy P2 matches the current version"]],
+    ]);
   });
 
   it("uses raw MCP calls only when no semantic events exist (older archives)", () => {

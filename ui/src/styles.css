@@ -3220,3 +3220,13 @@ ins {
 .gc-prov { font-size: 12px; color: var(--ink-2); }
 .gc-callout { margin: 0; padding: 10px 12px; border-radius: var(--r); background: var(--bad-soft); color: var(--ink); font-size: 12.5px; }
 @media (max-width: 650px) { .gc-grid { grid-template-columns: minmax(0, 1fr); } .gc-rows { grid-template-columns: minmax(0, 1fr); gap: 2px; } .gc-rows dd { margin-bottom: 6px; } }
+.archive-hint p, .autonomy-evidence p { margin: 0 0 8px; }
+.archive-hint, .autonomy-evidence { display: block; }
+.autonomy-evidence-links { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 860px) {
+  /* Top-bar layout: keep the source switcher to a compact selector so navigation keeps its space. */
+  .side-foot { display: flex; align-items: center; gap: 6px; }
+  .source-switcher { border: 0; padding: 0; margin: 0; background: none; }
+  .source-label, .source-db, .source-current { display: none; }
+  .source-select select { max-width: 132px; }
+}

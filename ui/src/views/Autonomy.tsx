@@ -4,7 +4,7 @@ import { useReviewerSession } from '../api/session';
 import type { AutonomyMode, AutonomyPolicy } from '../api/types';
 import { UnlockDialog } from '../components/ReviewerSession';
 import { ErrorState, LoadingBlock } from '../components/ui';
-import { useResource } from '../lib/hooks';
+import { navigate, useResource } from '../lib/hooks';
 import { useJury } from '../lib/jury';
 import { useLive } from '../lib/live';
 
@@ -91,6 +91,7 @@ export function AutonomyView() {
   if (!resource.data) return <LoadingBlock rows={8} />;
   const data = resource.data; const readonly = jury.readonly || data.historical;
   return <div className="page autonomy-page"><header className="page-head"><div><h1>Channel autonomy</h1><p>Server-enforced delegation. Local corrections and external publishing have separate authorization.</p></div></header>
+    {jury.readonly && <AutonomyEvidence />}
     {readonly ? <p className="note">Recorded evidence / read-only replay. These settings cannot authorize live actions.</p> : <p className="note">Operational settings for this database only. At most {data.global_run_limit} documents per run can be applied automatically. All channels start conservatively.</p>}
     {!readonly && data.channels.length > 0 && !data.channels[0]!.schema_available && <p className="note note-warn" role="status">Channel autonomy is not enabled for this database, so every channel keeps its conservative default and nothing can be delegated. A reviewer can enable it explicitly with <code>python cli.py enable-autonomy</code>; frozen evaluation and demo databases are never upgraded automatically.</p>}
     {!readonly && !session && <button className="btn" onClick={() => setUnlock(true)}>Unlock reviewer session to configure autonomy</button>}
@@ -98,5 +99,21 @@ export function AutonomyView() {
     <div className="autonomy-grid">{data.channels.map(p => <ChannelPolicy key={p.channel_id} policy={p} readonly={readonly || !!resource.error} onChanged={resource.reload} />)}</div>
     <p className="note">An applied correction creates a document version and an immutable receipt. It does not invent a fresh agent conclusion: the Impact Map requires analysis of the new version.</p>
     {unlock && <UnlockDialog onClose={() => setUnlock(false)} />}
+  </div>;
+}
+
+/** Jury replay only: where the honest autonomy evidence lives. */
+function AutonomyEvidence() {
+  const jury = useJury();
+  const has = (id: string) => jury.catalog?.replays.some(r => r.id === id);
+  const go = (id: string, view: 'execution' | 'review') => { jury.select(id); navigate(view); };
+  return <div className="note autonomy-evidence" data-testid="autonomy-evidence">
+    <p><strong>What is real here.</strong> The delegation settings below were recorded in the operator copy. A real delegated
+      Cominty run on an isolated three-document scenario failed the server&apos;s search-first contract, so nothing was proposed or applied.
+      Automatic application itself is shown only by a scripted local fixture, not by a Cominty run.</p>
+    <p className="autonomy-evidence-links">
+      {has('autonomy-live') && <button type="button" className="btn btn-sm" onClick={() => go('autonomy-live', 'execution')}>Real delegated attempt: execution timeline</button>}
+      {has('autonomy-fixture') && <button type="button" className="btn btn-sm" onClick={() => go('autonomy-fixture', 'review')}>Local fixture: automatic application</button>}
+    </p>
   </div>;
 }

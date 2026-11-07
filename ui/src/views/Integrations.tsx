@@ -6,7 +6,7 @@ import { UnlockDialog } from '../components/ReviewerSession';
 import { ErrorState, LoadingBlock, Spinner } from '../components/ui';
 import { formatDateTime, shortId } from '../lib/format';
 import { navigate, useResource } from '../lib/hooks';
-import { useJury } from '../lib/jury';
+import { ArchiveHint, useJury } from '../lib/jury';
 import { useLive } from '../lib/live';
 import { MEMORY_STATUS } from './Guard';
 
@@ -145,7 +145,7 @@ function RecordedIntegrationsView() {
   const header = <header className="ph"><div><h1>Memory &amp; Slack</h1>
     <p className="ph-sub">Native Cominty platform integrations, shown as recorded evidence.</p></div></header>;
   if (memory.error || notes.error) return <div className="page integrations-page">{header}
-    <p className="note">This archive has no Memory or Slack evidence. Open the “Guard &amp; Cominty Memory” archive from the jury guide.</p></div>;
+    <ArchiveHint replay="guard" text="This archive has no Memory or Slack evidence. It is recorded in the Guard & Cominty Memory archive." /></div>;
   if (!memory.data || !notes.data) return <LoadingBlock rows={6} />;
   return <div className="page integrations-page">{header}<RecordedIntegrations memory={memory.data} notes={notes.data} /></div>;
 }

@@ -49,6 +49,7 @@ function Overview({ snap, proposals, reload }: { snap: ImpactSnapshot; proposals
 
   return (
     <div className="page">
+      <h1 className="sr-only">Overview</h1>
       <section className="policy-strip" aria-label="Authoritative policy">
         <div className="ps-main">
           <PolicyVersion version={policy.version} current />

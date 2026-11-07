@@ -8,7 +8,7 @@ import { ErrorState, LoadingBlock, PolicyVersion, Spinner } from '../components/
 import { useImpact } from '../lib/data';
 import { formatDateTime, shortId } from '../lib/format';
 import { navigate, useResource } from '../lib/hooks';
-import { useJury } from '../lib/jury';
+import { ArchiveHint, useJury } from '../lib/jury';
 import { useLive } from '../lib/live';
 
 export const SOURCE_LABEL: Record<GuardSource, string> = {
@@ -121,6 +121,9 @@ export function GuardView({ selectedId = null }: { selectedId?: string | null })
   const [error, setError] = useState<string | null>(null);
   const [fresh, setFresh] = useState<GuardCheck | null>(null);
   const [unlock, setUnlock] = useState(false);
+  if (jury.readonly && !overview.data && overview.error instanceof ApiError && overview.error.status === 404) return <div className="page guard-page">
+    <header className="ph"><div><h1>Guard</h1><p className="ph-sub">Fail-closed validation of outgoing policy and support responses.</p></div></header>
+    <ArchiveHint replay="guard" text="This archive has no Guard checks. The real Cominty Guard decisions (ALLOW and BLOCK) are in the Guard archive." /></div>;
   if (overview.error && !overview.data) return <ErrorState error={overview.error} onRetry={overview.reload} />;
   if (!overview.data) return <LoadingBlock rows={8} />;
   const o = overview.data; const ex = o.executor;

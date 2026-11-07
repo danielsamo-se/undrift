@@ -72,16 +72,32 @@ export function provenanceOf(run: RunSummary, events: ActivityEvent[] = []): Pro
   return "cominty";
 }
 
-/** Events explicitly correlated with this run (by run ID, or by one of the run's proposals). */
+/** Events explicitly correlated with this run: by run ID, by the run's Cominty message ID (older archives),
+ *  by the MCP calls the server attributed to the run, or by one of the run's proposals. Never by time alone. */
 export function runEvents(run: RunSummary, events: ActivityEvent[]): ActivityEvent[] {
   const proposals = new Set(run.proposals);
-  return events
-    .filter((e) => e.metadata.run_id === run.id || (e.subject_type === "proposal" && e.subject_id !== null && proposals.has(e.subject_id)
-      && e.type !== "proposal.created"))
-    .sort((a, b) => a.seq - b.seq);
+  const calls = new Set(run.mcp_calls.map((c) => c.seq));
+  const linked = (e: ActivityEvent): boolean => {
+    const prov = (e.metadata.provenance ?? {}) as Record<string, unknown>;
+    if (e.metadata.run_id === run.id || prov.run_id === run.id || calls.has(e.seq)) return true;
+    if (run.message_id && (prov.message_id === run.message_id || e.metadata.message_id === run.message_id)) return true;
+    return e.subject_type === "proposal" && e.subject_id !== null && proposals.has(e.subject_id) && e.type !== "proposal.created";
+  };
+  return events.filter(linked).sort((a, b) => a.seq - b.seq);
 }
 
 interface Mapped { stage: StageId; lane: Lane; group: string; title: string; item: string; note?: string }
+
+/** The server's recorded search-first contract observations, when present. */
+export function strategyNote(m: Record<string, unknown>): string | undefined {
+  const details = (m.details ?? {}) as Record<string, unknown>;
+  const o = (details.observed ?? m.observed) as Record<string, unknown> | undefined;
+  if (!o || typeof o !== "object") return undefined;
+  const yn = (v: unknown) => (v ? "yes" : "no");
+  return `Recorded contract checks: ${s(o.distinct_formulated_queries_before_catalog)} distinct searches before the catalog · `
+    + `number-free search ${yn(o.number_free_query)} · search lead retrieved before the catalog ${yn(o.lead_followed)} · `
+    + `catalog complete ${yn(o.catalog_complete)} · ${s(o.search_calls)} search calls`;
+}
 
 function humanOrScripted(actor: string): Lane {
   return actor.startsWith("evaluation") ? "scripted" : "human";
@@ -102,11 +118,12 @@ function mapEvent(e: ActivityEvent, hasSemanticCalls: boolean): Mapped | null {
       const op = s(m.operation);
       if (op === "list_channels") return { stage: "discover", lane: "agent", group: "list", title: "list_channels", item: `${s(m.document_count)} documents reported` };
       if (op === "similar_documents") return { stage: "discover", lane: "agent", group: "similar", title: "similar_documents", item: s(m.document_id) || "reference document" };
-      const results = Array.isArray(m.result_documents) ? m.result_documents.length : 0;
+      const n = Array.isArray(m.result_documents) ? m.result_documents.length : 0;
+      const results = `${n} result${n === 1 ? "" : "s"}`;
       if (m.catalog_browse) return { stage: "discover", lane: "agent", group: "catalog", title: "search_documents · catalog browse (empty query)",
-        item: `offset ${s(m.offset ?? 0)} · ${results} results` };
+        item: `offset ${s(m.offset ?? 0)} · ${results}` };
       return { stage: "discover", lane: "agent", group: "search", title: "search_documents · formulated queries",
-        item: `“${s(m.query)}” · ${results} results${m.number_free ? " · no numbers" : ""}` };
+        item: `“${s(m.query)}” · ${results}${m.number_free ? " · no numbers" : ""}` };
     }
     case "agent.retrieval":
       return { stage: "retrieve", lane: "agent", group: `retrieve-${s(m.kind)}-${failed}`,
@@ -136,7 +153,7 @@ function mapEvent(e: ActivityEvent, hasSemanticCalls: boolean): Mapped | null {
     case "agent.reply_rejected":
     case "agent.reply_unparsed":
       return { stage: "validate", lane: "backend", group: e.type, title: e.type === "agent.reply_unparsed" ? "Final reply could not be parsed" : "Final reply rejected",
-        item: e.error ?? s(m.message) ?? "rejected" };
+        item: e.error ?? (s(m.message) || "rejected"), note: strategyNote(m) };
     case "agent.verdict_received":
       return { stage: "validate", lane: "backend", group: "verdict", title: failed ? "Final reply not accepted" : "Final reply accepted",
         item: failed ? e.error ?? "" : `policy P${s(m.reported_policy_version)} matches the current version` };
