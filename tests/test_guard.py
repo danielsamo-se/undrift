@@ -63,15 +63,18 @@ def run(demo, journal, executor, candidate, channel='support-snippets', **kw):
 # ---- fake Cominty SDK for the real executor ---------------------------------------------
 
 class FakeRun:
-    def __init__(self, content, status='success', delay=0):
+    def __init__(self, content, status='success', delay=0, stream=()):
         self.thread, self.message_id = SimpleNamespace(id='thread-1'), 'message-1'
         self.content, self.status, self.delay = content, status, delay
+        self.stream = list(stream)
 
     async def __aenter__(self): return self
     async def __aexit__(self, *a): return False
     def __aiter__(self): return self
 
     async def __anext__(self):
+        if self.stream:
+            return self.stream.pop(0)
         if self.delay:
             await asyncio.sleep(self.delay)
         raise StopAsyncIteration
@@ -80,7 +83,7 @@ class FakeRun:
         return SimpleNamespace(status=SimpleNamespace(value=self.status), content=self.content)
 
 
-def fake_cominty(respond, *, status='success', delay=0, fail=None, seen=None):
+def fake_cominty(respond, *, status='success', delay=0, fail=None, seen=None, stream=()):
     class Chat:
         async def start(self, **kw):
             if fail:
@@ -88,7 +91,7 @@ def fake_cominty(respond, *, status='success', delay=0, fail=None, seen=None):
             if seen is not None:
                 seen.update(kw)
             case = json.loads(re.search(r'```json\n(.*)\n```', kw['message'], re.S).group(1))
-            return FakeRun(respond(case), status, delay)
+            return FakeRun(respond(case), status, delay, stream)
 
     class Client:
         chat = Chat()
@@ -119,7 +122,8 @@ def test_case_b_grounded_claim_allows_only_through_verified_cominty_execution(de
         'agent_id': 'guard-agent', 'thread_id': 'thread-1', 'message_id': 'message-1'}
     caps = seen['thread_capabilities']
     assert all(getattr(caps, name).activation == 'never' for name in
-               ('mcp', 'web', 'indexed_documents', 'skills', 'image_generation', 'memory'))
+               ('mcp', 'web', 'indexed_documents', 'skills', 'image_generation', 'video_generation',
+                'music_generation', 'memory'))
 
 
 def test_case_c_unknown_order_never_allows_even_if_agent_says_allow(demo, journal):
@@ -211,6 +215,39 @@ def test_cominty_failures_and_timeouts_fail_closed(demo, journal, kwargs, status
     r = run(demo, journal, ex, B, confirm_paid=True)
     assert (r['execution']['status'], r['decision'], r['decision_source'], r['release_eligible']) == (
         status, 'NEEDS_REVIEW', 'fail_closed', False)
+
+
+def sdk_event(kind, data):
+    from datetime import datetime, timezone
+    from cominty_sdk import events
+    cls = {'tool_call': events.ToolCall, 'llm': events.LlmStep, 'result': events.Result}[kind]
+    return cls(id=f'{kind}-1', correlation_id=1, at=datetime.now(timezone.utc), status='success', name=kind, data=data)
+
+
+COST = {'failed': False, 'input_tokens': 1200, 'cached_tokens': 0, 'output_tokens': 300,
+        'input_cost': '0.0036', 'output_cost': '0.0045', 'total': '0.0081'}
+
+
+def test_cominty_execution_records_model_cost_and_duration(demo, journal):
+    stream = [sdk_event('llm', {'description': 'step', 'model': 'Claude Sonnet 5.5 (High)'}),
+              sdk_event('result', {'reply': 'x', 'cost': COST})]
+    r = run(demo, journal, guard.ComintyExecutor('g', fake_cominty(allow_b, stream=stream)), B, confirm_paid=True)
+    ex = r['execution']
+    assert r['decision'] == 'ALLOW' and ex['models'] == ['Claude Sonnet 5.5 (High)'] and ex['tool_calls'] == []
+    assert ex['cost']['total'] == '0.0081' and ex['duration_s'] >= 0
+
+
+def test_guard_tool_call_fails_closed(demo, journal):
+    stream = [sdk_event('tool_call', {'name': 'web_search', 'description': 'search'})]
+    r = run(demo, journal, guard.ComintyExecutor('g', fake_cominty(allow_b, stream=stream)), B, confirm_paid=True)
+    assert (r['execution']['status'], r['decision'], r['release_eligible']) == ('error', 'NEEDS_REVIEW', False)
+    assert r['execution']['tool_calls'] == ['web_search'] and 'tool call' in r['execution']['error']
+
+
+def test_timeout_keeps_cominty_message_identity(demo, journal):
+    r = run(demo, journal, guard.ComintyExecutor('g', fake_cominty(allow_b, delay=2), timeout_s=0.5), B, confirm_paid=True)
+    assert (r['execution']['status'], r['execution']['message_id'], r['execution']['thread_id']) == (
+        'timeout', 'message-1', 'thread-1')
 
 
 def test_unconfigured_guard_fails_closed_and_paid_execution_needs_confirmation(demo, journal):

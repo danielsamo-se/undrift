@@ -285,7 +285,9 @@ export interface GuardCheck {
   evidence: { ref: string; document_id: string; channel_id: string; version: number; sha256: string }[];
   facts: { ref: string; sha256: string; statement_redacted: string }[];
   precheck: { verdict: 'CLEAR' | 'NEEDS_REVIEW' | 'BLOCK'; findings: { rule: string; verdict: string; sentence: string; reason: string }[] };
-  execution: { mode: string; status: string; source: string; error: string | null; agent_id: string | null; thread_id: string | null; message_id: string | null };
+  execution: { mode: string; status: string; source: string; error: string | null; agent_id: string | null; thread_id: string | null; message_id: string | null;
+    duration_s?: number | null; models?: string[] | null; tool_calls?: string[] | null;
+    cost?: { total?: string | null; input_tokens?: number; output_tokens?: number; failed?: boolean } | null };
   agent_output: { verdict: string | null; findings: GuardFinding[]; uncertainty: string | null } | null;
   verification: { ok: boolean; problems: string[]; stale: string[] };
   decision: GuardDecision; decision_source: GuardSource; release_eligible: boolean; reasons: string[];

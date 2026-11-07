@@ -20,6 +20,7 @@ import os
 import re
 import secrets
 import sqlite3
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -353,10 +354,10 @@ class ComintyExecutor:
         from cominty_sdk import AsyncCominty
         return AsyncCominty()
 
-    async def _run(self, case: dict[str, Any]) -> Execution:
+    async def _run(self, case: dict[str, Any], identity: dict[str, Any]) -> Execution:
         from cominty_sdk import (AgentCapabilities, ImageGenerationCapability, IndexedDocumentsCapability,
-                                 McpCapability, MemoryCapability, SkillsCapability, WebCapability)
-        identity: dict[str, Any] = {'agent_id': self.agent_id}
+                                 McpCapability, MemoryCapability, MusicGenerationCapability, SkillsCapability,
+                                 VideoGenerationCapability, WebCapability, events)
         async with self._factory() as client:
             run = await client.chat.start(
                 agent_id=self.agent_id, message=build_message(case), name='undrift-guard', max_steps=2,
@@ -365,27 +366,45 @@ class ComintyExecutor:
                     indexed_documents=IndexedDocumentsCapability(activation='never'),
                     skills=SkillsCapability(activation='never'),
                     image_generation=ImageGenerationCapability(activation='never'),
+                    video_generation=VideoGenerationCapability(activation='never'),
+                    music_generation=MusicGenerationCapability(activation='never'),
                     memory=MemoryCapability(activation='never')))
             identity.update(thread_id=str(run.thread.id), message_id=str(run.message_id))
             async with run:
-                async for _ in run:
-                    pass
+                async for event in run:
+                    if isinstance(event, events.ToolCall):
+                        name = str(getattr(event.data, 'name', '?'))[:80]
+                        if name not in identity['tool_calls']:
+                            identity['tool_calls'].append(name)
+                    elif isinstance(event, events.LlmStep):
+                        model = str(getattr(event.data, 'model', '') or '')[:80]
+                        if model and model not in identity['models']:
+                            identity['models'].append(model)
+                    elif isinstance(event, events.Result):
+                        identity['cost'] = json.loads(event.data.cost.model_dump_json())
             message = await run.result()
             status = getattr(message.status, 'value', message.status)
             if status != 'success':
                 return Execution('error', 'cominty', message.content, identity,
                                  f'Cominty execution status {status}')
+            if identity['tool_calls']:
+                return Execution('error', 'cominty', message.content, identity,
+                                 'Guard attempted a tool call although it has no tools')
             return Execution('success', 'cominty', message.content or '', identity)
 
     def execute(self, case: dict[str, Any]) -> Execution:
+        identity: dict[str, Any] = {'agent_id': self.agent_id, 'models': [], 'tool_calls': [], 'cost': None}
+        started = time.monotonic()
         try:
-            return asyncio.run(asyncio.wait_for(self._run(case), self.timeout_s))
+            result = asyncio.run(asyncio.wait_for(self._run(case, identity), self.timeout_s))
         except (TimeoutError, asyncio.TimeoutError):
-            return Execution('timeout', 'cominty', identity={'agent_id': self.agent_id},
-                             error=f'Cominty Guard did not finish within {self.timeout_s:.0f} s')
+            result = Execution('timeout', 'cominty', identity=identity,
+                               error=f'Cominty Guard did not finish within {self.timeout_s:.0f} s')
         except Exception as exc:  # any SDK, network or service failure fails closed
-            return Execution('error', 'cominty', identity={'agent_id': self.agent_id},
-                             error=f'Cominty Guard execution failed: {type(exc).__name__}')
+            result = Execution('error', 'cominty', identity=identity,
+                               error=f'Cominty Guard execution failed: {type(exc).__name__}')
+        identity['duration_s'] = round(time.monotonic() - started, 2)
+        return result
 
 
 def executor_from_env():
@@ -467,7 +486,8 @@ def run_check(store: Store, journal: GuardJournal, executor, *, candidate: Any, 
                   for f in case['facts']],
         'precheck': pre,
         'execution': {'mode': executor.kind, 'status': execution.status, 'source': execution.source,
-                      'error': execution.error, **{k: execution.identity.get(k) for k in ('agent_id', 'thread_id', 'message_id')}},
+                      'error': execution.error, **{k: execution.identity.get(k) for k in (
+                          'agent_id', 'thread_id', 'message_id', 'duration_s', 'models', 'tool_calls', 'cost')}},
         'agent_output': config.safe_metadata(output) if output else None,
         'verification': {'ok': verdict is not None and not stale, 'problems': problems, 'stale': stale},
         'decision': decision, 'decision_source': source, 'release_eligible': eligible, 'reasons': reasons,

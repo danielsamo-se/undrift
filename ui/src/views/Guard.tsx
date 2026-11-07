@@ -42,6 +42,12 @@ export function GuardResult({ check }: { check: GuardCheck }) {
         <dt>Policy</dt><dd><PolicyVersion version={check.policy_version} /> <code>{check.policy_id}</code></dd>
         <dt>Channel</dt><dd><code>{check.channel_id}</code></dd>
         <dt>Execution</dt><dd>{check.execution.mode} · {check.execution.status}{check.execution.message_id && <> · message <code>{shortId(check.execution.message_id, 10)}</code></>}</dd>
+        {check.execution.mode === 'cominty' && <><dt>Cominty run</dt><dd>
+          {check.execution.models?.length ? check.execution.models.join(', ') : 'model not reported'}
+          {check.execution.duration_s != null && <> · {check.execution.duration_s.toFixed(1)} s</>}
+          {' · '}{check.execution.cost?.total != null ? <>reported cost {check.execution.cost.total}</> : 'cost not reported'}
+          {' · '}{check.execution.tool_calls?.length ? <strong>tool calls: {check.execution.tool_calls.join(', ')}</strong> : 'no tool calls'}
+        </dd></>}
         <dt>Contracts</dt><dd><code>{check.input_contract}</code> → <code>{check.output_contract}</code></dd>
         <dt>Time</dt><dd>{formatDateTime(check.created_at)}</dd>
       </dl>
