@@ -103,7 +103,8 @@ describe("consistency and next action", () => {
     failed.finding = { ...failed.finding!, run_status: "failed", verified_conclusion: false };
     const c = consistency(snap([known, ambiguous, failed]));
     expect(c.consistent).toBe(1);
-    expect(c.unknown).toBe(2);
+    // A failed run's UNRELATED stays distinct from a genuine UNKNOWN: it is provisional, not unknown.
+    expect([c.unknown, c.provisional]).toEqual([1, 1]);
     expect(c.drifted).toBe(0);
   });
   it("counts drift, stale and unanalysed separately", () => {

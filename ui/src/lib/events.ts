@@ -118,6 +118,19 @@ export function describeEvent(e: ActivityEvent): EventView {
     }
     case "finding.rejected":
       return { ...base, tone: "danger", icon: "alert", title: "Finding rejected", detail: e.error ?? "" };
+    case "agent.discovery": {
+      const op = str(m.operation);
+      const n = Array.isArray(m.result_documents) ? m.result_documents.length : null;
+      const results = n === null ? "" : `${n} result${n === 1 ? "" : "s"}`;
+      if (op === "search_documents" && (m.catalog_browse || !str(m.query).trim()))
+        return { ...base, tone: failed ? "danger" : "agent", icon: "search", title: "Catalog browse (empty search query)",
+          detail: ["lists the whole authorized catalog", `offset ${str(m.offset ?? 0)}`, results].filter(Boolean).join(" · ") };
+      if (op === "search_documents")
+        return { ...base, tone: failed ? "danger" : "agent", icon: "search", title: `Search: “${str(m.query)}”`, detail: results };
+      if (op === "list_channels")
+        return { ...base, tone: "agent", icon: "search", title: "list_channels", detail: `${str(m.document_count)} documents reported` };
+      return { ...base, tone: "agent", icon: "search", title: op || "Discovery", detail: [str(m.document_id), results].filter(Boolean).join(" · ") };
+    }
     case "agent.retrieval":
       return { ...base, tone: failed ? "danger" : "agent", icon: "search", title: failed ? "Retrieval failed" : "Run retrieval verified", detail: e.error ?? str(e.subject_id) };
     case "agent.reply_unparsed":

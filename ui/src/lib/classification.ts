@@ -64,6 +64,13 @@ export function statusOf(doc: Pick<ImpactDocument, "finding">): MapStatus {
   return category && category in BY_CATEGORY ? BY_CATEGORY[category] : category ? "unknown" : "unanalyzed";
 }
 
+/** The agent's own category when its conclusion is provisional (unverified run); null when verified or UNKNOWN. */
+export function provisionalCategory(doc: Pick<ImpactDocument, "finding">): MapStatus | null {
+  const category = doc.finding?.category;
+  if (doc.finding?.verified_conclusion !== false || !category || category === "UNKNOWN") return null;
+  return category in BY_CATEGORY ? BY_CATEGORY[category] : null;
+}
+
 export function isStale(doc: Pick<ImpactDocument, "finding">): boolean {
   return Boolean(doc.finding && !doc.finding.current);
 }

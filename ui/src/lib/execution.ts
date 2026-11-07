@@ -27,7 +27,7 @@ export const STAGES: { id: StageId; label: string; hint: string }[] = [
   { id: "retrieve", label: "Retrieval", hint: "Agent reads the policy and documents; the server records the exact versions served" },
   { id: "classify", label: "Findings", hint: "Agent records evidence-quoted findings; the server validates each one" },
   { id: "clarify", label: "Clarification", hint: "Native Cominty questions and their answers" },
-  { id: "validate", label: "Validation", hint: "Server checks the final reply against contracts and recorded findings" },
+  { id: "validate", label: "Final-reply check", hint: "Server check of the agent's final reply. Each finding was already validated when recorded (see Findings); this stage only has an event when the final reply was rejected or explicitly accepted." },
   { id: "propose", label: "Proposals", hint: "Finalizer turns validated corrections into exact patches" },
   { id: "decide", label: "Decision", hint: "Human review, or the bounded channel-delegation rule" },
   { id: "outcome", label: "Outcome", hint: "Final run state as recorded" },
@@ -120,8 +120,8 @@ function mapEvent(e: ActivityEvent, hasSemanticCalls: boolean): Mapped | null {
       if (op === "similar_documents") return { stage: "discover", lane: "agent", group: "similar", title: "similar_documents", item: s(m.document_id) || "reference document" };
       const n = Array.isArray(m.result_documents) ? m.result_documents.length : 0;
       const results = `${n} result${n === 1 ? "" : "s"}`;
-      if (m.catalog_browse) return { stage: "discover", lane: "agent", group: "catalog", title: "search_documents · catalog browse (empty query)",
-        item: `offset ${s(m.offset ?? 0)} · ${results}` };
+      if (m.catalog_browse || !s(m.query).trim()) return { stage: "discover", lane: "agent", group: "catalog", title: "search_documents · catalog browse",
+        item: `empty query = list the whole authorized catalog · offset ${s(m.offset ?? 0)} · ${results}` };
       return { stage: "discover", lane: "agent", group: "search", title: "search_documents · formulated queries",
         item: `“${s(m.query)}” · ${results}${m.number_free ? " · no numbers" : ""}` };
     }

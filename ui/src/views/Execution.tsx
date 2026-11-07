@@ -68,6 +68,37 @@ function StepRow({ step, questions }: { step: Step; questions: { prompt: string;
   );
 }
 
+/** One Cominty conversation, several phases: what each recorded phase did, from run summaries only. */
+function PhaseStrip({ runs, current, phases }: { runs: RunSummary[]; current: string; phases: { run_id: string; questions: { answer: string | null }[] }[] }) {
+  const sameThread = new Set(runs.map((r) => r.thread_id).filter(Boolean)).size === 1;
+  return (
+    <div className="ex-phases" data-testid="ex-phases">
+      <p className="ex-phases-title">Same Cominty conversation{sameThread && runs[0]?.thread_id ? <> · thread <code>{shortId(runs[0].thread_id, 8)}</code> in every phase</> : null}</p>
+      <ol className="ex-phase-list">
+        {runs.map((r) => {
+          const qs = phases.filter((p) => p.run_id === r.id).flatMap((p) => p.questions);
+          const answered = qs.filter((q) => q.answer).length;
+          const n = Object.keys(r.classifications).length;
+          return (
+            <li key={r.id} className={r.id === current ? "is-current" : ""}>
+              <button type="button" onClick={() => navigate("execution", r.id)} aria-current={r.id === current ? "true" : undefined}>
+                <span className="ex-phase-n">Phase {r.phase}</span> <code>{shortId(r.id)}</code>
+              </button>
+              <span className="small">
+                {n} finding{n === 1 ? "" : "s"}
+                {qs.length ? ` · asked ${qs.length} native question${qs.length === 1 ? "" : "s"} (${answered} answered)` : ""}
+                {r.proposals.length ? ` · ${r.proposals.length} proposal${r.proposals.length === 1 ? "" : "s"}` : ""}
+                {` · run ${r.status}`}{r.errors[0] ? `: ${r.errors[0]}` : ""}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+      <p className="muted small">Each phase is a separate run with fresh, revoked-after-use credentials; the answers to the earlier phase’s questions were sent into the same Cominty thread.</p>
+    </div>
+  );
+}
+
 function StageRail({ ex, status }: { ex: Execution; status: string }) {
   return (
     <ol className="ex-rail" aria-label="Execution stages">
@@ -77,7 +108,7 @@ function StageRail({ ex, status }: { ex: Execution; status: string }) {
             <span className="ex-stage-n">{String(i + 1).padStart(2, "0")}</span>
             <span className="ex-stage-label">{st.label}</span>
             <span className="ex-stage-meta">
-              {st.status === "none" ? "no record" : st.id === "outcome" ? `run ${status}` : st.status === "ok" ? `${st.count} recorded` : `${st.count} · ${st.status}`}
+              {st.status === "none" ? (st.id === "validate" ? "no separate event" : "no record") : st.id === "outcome" ? `run ${status}` : st.status === "ok" ? `${st.count} recorded` : `${st.count} · ${st.status}`}
             </span>
             <span className="ex-stage-lanes" aria-hidden>{st.lanes.map((l) => <i key={l} className={`ex-dot lane-${l}`} />)}</span>
           </button>
@@ -155,16 +186,15 @@ export function ExecutionView({ runId }: { runId: string | null }) {
                 <div><dt>{ex.autoApplied.length}</dt><dd>applied under delegation</dd></div>
               </dl>
             )}
-            {siblings.length > 1 && (
-              <p className="small ex-phases">Same Cominty conversation:{" "}
-                {siblings.map((r) => <button key={r.id} type="button" className={`link${r.id === run.id ? " is-current" : ""}`} onClick={() => navigate("execution", r.id)}>phase {r.phase} <code>{shortId(r.id)}</code></button>)}
-              </p>
-            )}
+            {siblings.length > 1 && <PhaseStrip runs={siblings} current={run.id} phases={phases} />}
           </section>
 
           {events.error && !events.data ? <ErrorState error={events.error} onRetry={events.reload} /> : !ex ? <LoadingBlock rows={6} /> : (
             <>
               <StageRail ex={ex} status={run.status} />
+              {ex.stages.find((st) => st.id === "validate")?.status === "none" && ex.stages.find((st) => st.id === "classify")?.status !== "none" && (
+                <p className="muted small ex-rail-note">Each finding was validated by the server when it was recorded (see Findings). The final-reply check only has its own event when the server rejected or explicitly accepted the final reply; none was recorded for this run, and the outcome shows the result.</p>
+              )}
               <p className="ex-legend" aria-label="Lane legend">
                 {LANES.filter((l) => ex.steps.some((st) => st.lane === l)).map((l) => <span key={l} className={`ex-legend-item lane-${l}`}><i className={`ex-dot lane-${l}`} />{LANE_LABEL[l]}</span>)}
               </p>

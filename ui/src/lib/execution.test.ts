@@ -44,7 +44,7 @@ describe("buildExecution", () => {
       ["start", "backend", "Runner opened the run", 1],
       ["start", "backend", "Task sent to the Cominty agent", 1],
       ["discover", "agent", "search_documents · formulated queries", 2],
-      ["discover", "agent", "search_documents · catalog browse (empty query)", 1],
+      ["discover", "agent", "search_documents · catalog browse", 1],
       ["retrieve", "agent", "get_document", 2],
       ["classify", "agent", "record_finding", 1],
       ["validate", "backend", "Final reply rejected", 1],

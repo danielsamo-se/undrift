@@ -16,7 +16,7 @@ import { AutonomyView } from './views/Autonomy';
 import { GuardView } from './views/Guard';
 import { IntegrationsView } from './views/Integrations';
 import { ExecutionView } from './views/Execution';
-import { JuryProvider, JuryBanner, JuryGuide, useJury } from './lib/jury';
+import { JuryProvider, JuryBanner, JuryGuide, TourBar, useJury } from './lib/jury';
 
 const NAV: { view: View; label: string; icon: LucideIcon; key: string }[] = [
   { view: "overview", label: "Overview", icon: LayoutGrid, key: "1" },
@@ -108,6 +108,7 @@ function Shell() {
       </aside>
       <main className="main">
         <JuryBanner />
+        <TourBar />
         {jury.readonly && route.view==='tour' && <JuryGuide />}
         {route.view === "overview" && <OverviewView />}
         {route.view === "impact" && <ImpactView selectedId={route.param} />}

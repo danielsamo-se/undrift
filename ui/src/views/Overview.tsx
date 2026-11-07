@@ -5,6 +5,7 @@ import type { ImpactSnapshot, Proposal } from "../api/types";
 import { LogRow } from "../components/ActivityLog";
 import { ImpactBoard } from "../components/ImpactBoard";
 import { PolicyChangeDialog } from "../components/PolicyChangeDialog";
+import { PublishedEvidence } from "../components/PublishedEvidence";
 import { UnlockDialog } from "../components/ReviewerSession";
 import { Disclosure, DocVersion, ErrorState, LoadingBlock, PolicyVersion, Section, Status } from "../components/ui";
 import { consistency, liveDocuments, nextAction } from "../lib/board";
@@ -45,7 +46,7 @@ function Overview({ snap, proposals, reload }: { snap: ImpactSnapshot; proposals
   );
   const run = snap.latest_run;
   const liveDocs = useMemo(() => liveDocuments(live.events, live.freshSince, now), [live.events, live.freshSince, now]);
-  const tone = c.drifted || c.unknown ? "bad" : c.stale || c.unanalyzed ? "warn" : "ok";
+  const tone = c.drifted || c.unknown ? "bad" : c.provisional || c.stale || c.unanalyzed ? "warn" : "ok";
 
   return (
     <div className="page">
@@ -91,6 +92,8 @@ function Overview({ snap, proposals, reload }: { snap: ImpactSnapshot; proposals
         </Disclosure>
       </section>
 
+      <PublishedEvidence proposals={proposals} notCurrent={c.stale + c.unanalyzed} />
+
       <section className={`state state-${tone}`} aria-label="Consistency status">
         <div className="state-main">
           <p className="state-title">
@@ -98,6 +101,8 @@ function Overview({ snap, proposals, reload }: { snap: ImpactSnapshot; proposals
               ? `${plural(c.drifted, "document has", "documents have")} drifted from P${policy.version}`
               : c.unknown
                 ? `${plural(c.unknown, "document", "documents")} could not be classified`
+                : c.provisional
+                  ? `${plural(c.provisional, "finding is", "findings are")} provisional: the run was not verified by the server`
                 : c.stale || c.unanalyzed
                   ? `${plural(c.stale + c.unanalyzed, "document needs", "documents need")} analysis against P${policy.version}`
                   : `All ${c.total} documents are consistent with P${policy.version}`}
@@ -133,6 +138,11 @@ function Overview({ snap, proposals, reload }: { snap: ImpactSnapshot; proposals
             {c.unknown > 0 && (
               <li className="is-warn">
                 <b>{c.unknown}</b> unknown
+              </li>
+            )}
+            {c.provisional > 0 && (
+              <li className="is-warn" title="Agent conclusions from a run the server did not verify. The agent's own category is kept on each card.">
+                <b>{c.provisional}</b> provisional
               </li>
             )}
             {c.stale + c.unanalyzed > 0 && (

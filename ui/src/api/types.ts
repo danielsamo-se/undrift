@@ -369,6 +369,8 @@ export interface AutonomyDecision {
 export interface Publication {
   status: "approved" | "pr_created" | "merged" | "deployed" | "verified" | "blocked";
   digest: string;
+  authorized_by?: string;
+  authorized_at?: string;
   target: { repository: string; branch: string; path: string; site_url: string };
   pr?: { number: number; url: string; commit: string };
   merge_commit?: string;

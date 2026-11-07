@@ -1,0 +1,55 @@
+{
+  "status": "prepared_not_deployed",
+  "kind": "ui_only_update",
+  "replaces_worker_of": "v4 (same snapshot)",
+  "project_id": "appgprj_6aeeeefd422881919acadfc0e3ff7f1f",
+  "snapshot_id": "5341fcca1bc0da916563350862d40de901d55be2a39532f643c61b54628b47b9",
+  "snapshot_unchanged_from_v4": true,
+  "worker_sha256": "e8238e03b4cd43f9dd24fdf57057a1d25a163a6c113109da65b4bb1aac46c52b",
+  "module_bytes": 4123478,
+  "gzip_bytes": 1160811,
+  "archives": 13,
+  "worker_code_changed": false,
+  "evidence_changed": false,
+  "ui_changes": [
+    "guided walkthrough bar: step N of 10, what to notice, previous/next, step buttons, paused state, all steps; history-safe across archives",
+    "step 1 opens the policy change (Overview), step 7 opens the publishing evidence panel (no two consecutive identical screens)",
+    "grouped evidence-archive selector with plain-language evidence type and archive description",
+    "Overview: recorded GitHub PR -> merge -> Vercel -> verified panel; explains external publication vs local application and 'not current'",
+    "provisional (unverified-run) findings keep the agent's category and are counted separately from UNKNOWN",
+    "timeline: explicit catalog-browse label, 'Final-reply check' with explanation, phase strip for multi-phase conversations",
+    "Activity: readable discovery events"
+  ],
+  "local_verification": {
+    "database_identities": 13,
+    "writes_denied": 44,
+    "private_paths_404": true,
+    "preserved_historical_files": 98,
+    "evaluation_05_only_server_started_appended": true
+  },
+  "browser_routes_verified": [
+    "reliability",
+    "guide",
+    "guide-mobile",
+    "impact",
+    "review",
+    "autonomy",
+    "fixture",
+    "guard",
+    "memory",
+    "activity",
+    "guard-block",
+    "execution",
+    "execution-live",
+    "autonomy-honesty"
+  ],
+  "qa": {
+    "archive_view_matrix_pages": 117,
+    "walkthrough_steps": 10,
+    "history_back_forward": true,
+    "archives_selectable": 13,
+    "interactive_flows": 33,
+    "issues": 0
+  },
+  "package": ".tools/jury-site-v4 (git-ignored; rebuilt from frozen .tools/jury-replay-v4.json)"
+}

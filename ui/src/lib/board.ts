@@ -47,6 +47,8 @@ export interface Consistency {
   total: number;
   drifted: number;
   unknown: number;
+  /** Agent conclusions from a run the server did not verify; kept apart from genuine UNKNOWN classifications. */
+  provisional: number;
   stale: number;
   unanalyzed: number;
   consistent: number;
@@ -59,6 +61,7 @@ export function consistency(snap: ImpactSnapshot): Consistency {
   const counts = new Map<MapStatus, number>();
   let drifted = 0;
   let unknown = 0;
+  let provisional = 0;
   let stale = 0;
   let unanalyzed = 0;
   for (const d of snap.documents) {
@@ -66,7 +69,10 @@ export function consistency(snap: ImpactSnapshot): Consistency {
     counts.set(s, (counts.get(s) ?? 0) + 1);
     if (s === "unanalyzed") unanalyzed++;
     else if (isStale(d)) stale++;
-    else if (d.finding?.verified_conclusion === false) unknown++;
+    else if (d.finding?.verified_conclusion === false) {
+      if (d.finding.category === "UNKNOWN") unknown++;
+      else provisional++;
+    }
     else if (s === "outdated") drifted++;
     else if (s === "unknown") unknown++;
   }
@@ -75,9 +81,10 @@ export function consistency(snap: ImpactSnapshot): Consistency {
     total: snap.documents.length,
     drifted,
     unknown,
+    provisional,
     stale,
     unanalyzed,
-    consistent: snap.documents.length - drifted - unknown - stale - unanalyzed,
+    consistent: snap.documents.length - drifted - unknown - provisional - stale - unanalyzed,
     pendingReview: proposals.filter((p) => p.status === "pending_review").length,
     awaitingApply: proposals.filter((p) => p.status === "approved").length,
     counts,
@@ -105,6 +112,7 @@ export function nextAction(snap: ImpactSnapshot, proposals: Proposal[]): NextAct
   );
   if (uncovered.length) return { kind: "analyse", reason: `${uncovered.length} outdated without a correction` };
   if (c.unknown) return { kind: "analyse", reason: `${c.unknown} could not be classified reliably` };
+  if (c.provisional) return { kind: "analyse", reason: `${c.provisional} provisional findings from a run the server did not verify` };
   if (c.stale || c.unanalyzed) return { kind: "analyse", reason: `${c.stale + c.unanalyzed} not analysed at the current versions` };
   return { kind: "none" };
 }

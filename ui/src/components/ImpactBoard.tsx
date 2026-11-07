@@ -1,6 +1,6 @@
 import { Globe, Lock } from "lucide-react";
 import type { ImpactDocument, ImpactSnapshot } from "../api/types";
-import { STATUS, isStale, statusOf } from "../lib/classification";
+import { STATUS, isStale, provisionalCategory, statusOf } from "../lib/classification";
 import { buildLanes, consistency, type BoardFilter, type LiveKind } from "../lib/board";
 import { formatDate } from "../lib/format";
 import { DocVersion, PolicyVersion, StatusDot } from "./ui";
@@ -30,19 +30,21 @@ function DocCard({ doc, selected, live, compact, onSelect }: {
 }) {
   const status = statusOf(doc);
   const stale = isStale(doc);
+  const provisional = provisionalCategory(doc);
   const open = doc.proposals.filter((p) => p.status === "pending_review" || p.status === "approved");
   return (
     <button
       type="button"
       className={`dcard dcard-${status}${selected ? " is-selected" : ""}${live ? " is-live" : ""}`}
       aria-pressed={selected}
-      aria-label={`${doc.title}, ${STATUS[status].label}${stale ? ", stale" : ""}, document version ${doc.version}${open.length ? `, ${open.length} correction open` : ""}`}
+      aria-label={`${doc.title}, ${STATUS[status].label}${provisional ? `, agent said ${STATUS[provisional].label}, unverified` : ""}${stale ? ", stale" : ""}, document version ${doc.version}${open.length ? `, ${open.length} correction open` : ""}`}
       onClick={() => onSelect(selected ? null : doc.id)}
     >
       <span className="dcard-row">
         <StatusDot status={status} />
         <span className="dcard-status">{STATUS[status].short}</span>
         {stale && <span className="stale">stale</span>}
+        {provisional && <span className="dcard-prov" title="The run was not verified by the server, so this conclusion is provisional.">{provisional === status ? "unverified" : `agent: ${STATUS[provisional].short} · unverified`}</span>}
         <span className="dcard-ver">
           <DocVersion version={doc.version} />
         </span>

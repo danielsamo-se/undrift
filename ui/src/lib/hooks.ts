@@ -18,7 +18,16 @@ export function parseHash(hash: string): Route {
 
 function subscribeHash(cb: () => void): () => void {
   window.addEventListener("hashchange", cb);
-  return () => window.removeEventListener("hashchange", cb);
+  window.addEventListener("popstate", cb);
+  return () => {
+    window.removeEventListener("hashchange", cb);
+    window.removeEventListener("popstate", cb);
+  };
+}
+
+/** A query-string value that follows pushState/back/forward. */
+export function useSearchParam(name: string): string | null {
+  return useSyncExternalStore(subscribeHash, () => new URL(window.location.href).searchParams.get(name), () => null);
 }
 
 export function useRoute(): Route {

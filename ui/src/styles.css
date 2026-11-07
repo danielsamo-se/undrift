@@ -3230,3 +3230,53 @@ ins {
   .source-label, .source-db, .source-current { display: none; }
   .source-select select { max-width: 132px; }
 }
+
+/* ---- Guided walkthrough bar and archive description ------------------------------------- */
+.jury-archive-desc { display: block; margin-top: 4px; font-size: 12px; color: var(--ink-2); }
+.jury-archive-desc .evidence-tag { margin-right: 4px; }
+.tour-bar { display: grid; gap: 8px; margin: 0 0 18px; padding: 14px 16px; border: 1px solid var(--accent-line); border-left: 4px solid var(--accent); border-radius: var(--r-lg); background: var(--panel); }
+.tour-bar.is-away { border-left-color: var(--ink-3); border-color: var(--line); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.tour-away { margin: 0; font-size: 13px; }
+.tour-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.tour-count { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: .04em; }
+.tour-title { margin: 0; font-size: 16px; font-weight: 600; }
+.tour-tags { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.tour-notice { margin: 0; font-size: 13px; line-height: 1.5; max-width: 110ch; }
+.tour-notice > span { display: inline-block; margin-right: 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
+.tour-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tour-dots { display: flex; gap: 4px; list-style: none; margin: 0 auto; padding: 0; }
+.tour-dots button { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line-strong); background: var(--panel); font: inherit; font-size: 11px; cursor: pointer; color: var(--ink-2); }
+.tour-dots button.is-current { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.tour-dots button:focus-visible, .tour-actions .btn:focus-visible { outline: none; box-shadow: var(--focus); }
+@media (max-width: 860px) { .tour-label { display: none; } .tour-dots { order: 3; width: 100%; margin: 4px 0 0; flex-wrap: wrap; } }
+
+/* ---- External publication evidence (Overview) ---------------------------------------- */
+.pubev { margin: 0 0 18px; padding: 18px 20px; border: 1px solid var(--line); border-left: 4px solid var(--ink-3); border-radius: var(--r-lg); background: var(--panel); display: grid; gap: 12px; }
+.pubev.is-verified { border-left-color: var(--ok); }
+.pubev-head h2 { margin: 2px 0 4px; font-size: 18px; font-weight: 500; }
+.pubev-head p { margin: 0; }
+.pubev-kicker { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ok) !important; }
+.pubev-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.pubev-steps li { display: grid; grid-template-columns: 14px minmax(0, 300px) minmax(0, 1fr); gap: 10px; align-items: baseline; font-size: 13px; }
+.pubev-dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--line-strong); }
+.pubev-steps li.is-done .pubev-dot { background: var(--ok); border-color: var(--ok); }
+.pubev-steps li.is-missing { color: var(--ink-3); }
+.pubev-meta { color: var(--ink-2); font-size: 12px; overflow-wrap: anywhere; }
+.pubev-links { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
+.pubev-explain { padding: 10px 12px; border-radius: var(--r); background: var(--sunken); font-size: 12.5px; }
+.pubev-explain p { margin: 0 0 6px; }
+.pubev-explain p:last-child { margin: 0; }
+.dcard-prov { font-size: 10.5px; color: var(--ink-3); font-style: italic; }
+@media (max-width: 650px) { .pubev-steps li { grid-template-columns: 14px minmax(0, 1fr); } .pubev-meta { grid-column: 2; } }
+.ex-rail-note { margin: 0 0 10px; max-width: 110ch; }
+.ex-phases { margin: 16px 0 0; padding: 12px 14px; border: 1px solid var(--line-soft); border-radius: var(--r); background: var(--sunken); display: grid; gap: 6px; }
+.ex-phases-title { margin: 0; font-size: 12px; font-weight: 600; }
+.ex-phase-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.ex-phase-list li { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.ex-phase-list button { font: inherit; font-size: 12px; background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-decoration: underline; }
+.ex-phase-list li.is-current button { font-weight: 600; text-decoration: none; color: var(--ink); }
+.ex-phase-n { font-weight: 600; }
+.ex-phases p { margin: 0; }
+.jury-banner .jury-archive-desc .evidence-tag { display: inline-block; width: auto; margin-right: 6px; }
+.tour-actions .btn { gap: 0; }
+.jury-banner select { max-width: 360px; }

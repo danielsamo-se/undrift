@@ -4,7 +4,7 @@ import { useReviewerSession } from '../api/session';
 import type { AutonomyMode, AutonomyPolicy } from '../api/types';
 import { UnlockDialog } from '../components/ReviewerSession';
 import { ErrorState, LoadingBlock } from '../components/ui';
-import { navigate, useResource } from '../lib/hooks';
+import { useResource } from '../lib/hooks';
 import { useJury } from '../lib/jury';
 import { useLive } from '../lib/live';
 
@@ -106,7 +106,7 @@ export function AutonomyView() {
 function AutonomyEvidence() {
   const jury = useJury();
   const has = (id: string) => jury.catalog?.replays.some(r => r.id === id);
-  const go = (id: string, view: 'execution' | 'review') => { jury.select(id); navigate(view); };
+  const go = (id: string, view: 'execution' | 'review') => jury.go(id, view);
   return <div className="note autonomy-evidence" data-testid="autonomy-evidence">
     <p><strong>What is real here.</strong> The delegation settings below were recorded in the operator copy. A real delegated
       Cominty run on an isolated three-document scenario failed the server&apos;s search-first contract, so nothing was proposed or applied.

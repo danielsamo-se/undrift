@@ -8,6 +8,36 @@ It has no dependency on the laptop, ngrok, local API services, Cominty availabil
 or GitHub credentials. The operational Python application and local reviewer flow
 remain unchanged and separate.
 
+## UI update for v4 (prepared, not deployed)
+
+The public site serves the v4 snapshot. A UI-only update is prepared locally. It keeps the **same snapshot** `5341fcca…`, all 13 archives and the unchanged Worker code; only the built interface differs. Its record is `deployment/jury/release-v4-ux-prepared.json`, with worker `e8238e03b4cd43f9dd24fdf57057a1d25a163a6c113109da65b4bb1aac46c52b`.
+
+What the update changes:
+- **Guided walkthrough:**
+  - a step bar showing step N of 10 and what to notice;
+  - Previous, Next, numbered step buttons and All steps;
+  - a paused state when you leave a step;
+  - browser back and forward stay consistent across archives.
+- **Distinct steps:** step 1 opens the policy change and step 7 opens the publishing panel, so no two consecutive steps show the same screen.
+- **Archive selector:** grouped as main walkthrough, channel autonomy and reliability evaluation, with a plain evidence-type label and the archive's description.
+- **Overview publishing panel:** the recorded approval → PR #1 → merge → Vercel → verified chain, plus why local document status differs from the live website.
+- **Provisional findings:** findings from runs the server did not verify keep the agent's category and are counted apart from genuine UNKNOWN.
+- **Timeline clarity:**
+  - an explicit catalog-browse label;
+  - "Final-reply check" with an explanation;
+  - a phase strip for the clarification conversation.
+
+Verification:
+- the v4 verifier passed;
+- the 117-page archive × view matrix found no errors;
+- all 10 steps passed, including back and forward;
+- all 13 archive selections passed;
+- writes were refused with 403;
+- the phone layout passed;
+- 97 UI, 504 Python and 5 Worker tests passed.
+
+**Codex handoff:** follow the v4 handoff below with the rebuilt `.tools/jury-site-v4/`, from `dist/` through `PUBLIC-REPLAY.json`. Save and deploy that exact version, keeping the current one as the rollback. `/api/demo` must still report snapshot `5341fcca…`. Then run `verify_jury_v4.py` against the public URL.
+
 ## Release v4 (deployed and verified)
 
 The public site serves **Sites version 4**, deployed through the authenticated Codex Sites workflow without rebuilding or re-exporting the prepared evidence. Exact release identity and public verification are in `deployment/jury/deployment.json` and `deployment/jury/verification.json`. The preparation record remains unchanged.
