@@ -19,3 +19,5 @@ The [public jury demo](https://undrift-jury-demo.equalglass4.chatgpt.site) is a 
 ## v4 update
 
 Four subsequent development milestones (`0ae86c1`, `d3e24e1`, `a9e3a5c`, `ee2b163`) were transferred as reviewed source patches on top of the existing public history, each in its own noreply-authored commit. No original private commit objects or refs were imported. A separate release commit records the verified Sites v4 deployment and updates release-status documentation. The original development repository remains unchanged.
+
+The final UI-only milestone `8242349` was likewise transferred by source patch, preserving the existing public history and publication-specific fixes. Its public milestone is `6d4dea50ce54c58c3464e6fbcbea57813f786e6b`; the subsequent release commit records Sites version 5 while keeping the same replay snapshot.

@@ -53,7 +53,7 @@ Use a 1440-pixel-wide window at 100% zoom with no other tabs. Click **Start the 
 
 ## Remaining owner decisions
 
-Sites v4 is deployed and publicly verified with 13 archives, both real Guard verdicts, the failed delegated run and the execution timeline. See `docs/PUBLIC_DEMO.md` and `deployment/jury/deployment.json`. The four new milestones are transferred through the privacy-safe publication process.
+Sites version 5 (the final UX update on the unchanged v4 snapshot) is deployed and publicly verified with 13 archives, both real Guard verdicts, the failed delegated run and the execution timeline. See `docs/PUBLIC_DEMO.md` and `deployment/jury/deployment.json`. The four new milestones are transferred through the privacy-safe publication process.
 
 1. **Record** the demonstration using the plan above.
 2. **Submit** the description and video.

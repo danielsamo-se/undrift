@@ -1,0 +1,162 @@
+{
+  "origin": "https://undrift-jury-demo.equalglass4.chatgpt.site",
+  "snapshot_id": "5341fcca1bc0da916563350862d40de901d55be2a39532f643c61b54628b47b9",
+  "database_identities": 13,
+  "reliability": {
+    "rendered": true,
+    "replay_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "no_write_buttons": true,
+    "screenshot": true
+  },
+  "publication_commit": true,
+  "native_answers": 5,
+  "guard_live_check": true,
+  "memory_metadata_only": true,
+  "slack_not_connected": true,
+  "autonomy_config": true,
+  "writes_denied": 44,
+  "private_paths_404": true,
+  "guide": {
+    "rendered": true,
+    "replay_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "no_write_buttons": true,
+    "screenshot": true
+  },
+  "guide-mobile": {
+    "rendered": true,
+    "replay_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "no_write_buttons": true,
+    "screenshot": true
+  },
+  "impact": {
+    "rendered": true,
+    "replay_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "no_write_buttons": true,
+    "screenshot": true
+  },
+  "review": {
+    "rendered": true,
+    "replay_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "no_write_buttons": true,
+    "screenshot": true
+  },
+  "autonomy": {
+    "rendered": true,
+    "replay_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "no_write_buttons": true,
+    "screenshot": true
+  },
+  "fixture": {
+    "rendered": true,
+    "replay_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "no_write_buttons": true,
+    "screenshot": true
+  },
+  "guard": {
+    "rendered": true,
+    "replay_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "no_write_buttons": true,
+    "screenshot": true
+  },
+  "memory": {
+    "rendered": true,
+    "replay_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "no_write_buttons": true,
+    "screenshot": true
+  },
+  "activity": {
+    "rendered": true,
+    "replay_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "no_write_buttons": true,
+    "screenshot": true
+  },
+  "guard-block": {
+    "rendered": true,
+    "replay_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "no_write_buttons": true,
+    "screenshot": true
+  },
+  "execution": {
+    "rendered": true,
+    "replay_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "no_write_buttons": true,
+    "screenshot": true
+  },
+  "execution-live": {
+    "rendered": true,
+    "replay_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "no_write_buttons": true,
+    "screenshot": true
+  },
+  "autonomy-honesty": {
+    "rendered": true,
+    "replay_banner": true,
+    "no_load_errors": true,
+    "no_unlock_controls": true,
+    "no_write_buttons": true,
+    "screenshot": true
+  },
+  "evaluation_05_only_server_started_appended": true,
+  "preserved_historical_files": 98,
+  "approved_changes": [
+    ".env",
+    ".tools\\reliability-v2\\api-runtime.json",
+    ".tools\\reliability-v2\\mcp-runtime.json",
+    "data\\reliability-v2\\evaluation-05.db"
+  ],
+  "backend_tests": {
+    "passed": 503,
+    "skipped": 1,
+    "skip_reason": "private portable Node path is absent from the publication clone"
+  },
+  "ui_tests": {
+    "passed": 92
+  },
+  "worker_tests": {
+    "passed": 5
+  },
+  "storefront_tests": {
+    "passed": 2
+  },
+  "typescript": "passed",
+  "production_build": "passed",
+  "local_recording_services_preserved": true,
+  "interactive_browser_qa": {
+    "steps": 33,
+    "passed": 33,
+    "desktop_and_mobile": true,
+    "guide_navigation_and_timeline": true,
+    "guard_comparison": true,
+    "no_overflow": true,
+    "no_unexpected_browser_errors": true,
+    "expected_absent_archive_guard_requests": 2,
+    "dom_serialization_selector_followups": 2,
+    "write_probe_status": 403
+  }
+}

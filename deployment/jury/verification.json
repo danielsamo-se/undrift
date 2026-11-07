@@ -130,33 +130,38 @@
     ".tools\\reliability-v2\\mcp-runtime.json",
     "data\\reliability-v2\\evaluation-05.db"
   ],
+  "ui_tests": {
+    "passed": 97
+  },
   "backend_tests": {
     "passed": 503,
     "skipped": 1,
-    "skip_reason": "private portable Node path is absent from the publication clone"
-  },
-  "ui_tests": {
-    "passed": 92
+    "skip_reason": "private portable Node path is excluded from publication clone"
   },
   "worker_tests": {
     "passed": 5
   },
-  "storefront_tests": {
-    "passed": 2
-  },
   "typescript": "passed",
   "production_build": "passed",
-  "local_recording_services_preserved": true,
-  "interactive_browser_qa": {
-    "steps": 33,
-    "passed": 33,
-    "desktop_and_mobile": true,
-    "guide_navigation_and_timeline": true,
-    "guard_comparison": true,
-    "no_overflow": true,
-    "no_unexpected_browser_errors": true,
-    "expected_absent_archive_guard_requests": 2,
-    "dom_serialization_selector_followups": 2,
-    "write_probe_status": 403
+  "final_walkthrough_browser_qa": {
+    "browser_steps": 62,
+    "all_ten_walkthrough_steps": true,
+    "back_forward_previous_next": true,
+    "paused_state": true,
+    "grouped_archives": 13,
+    "deep_links_and_mobile": true,
+    "publishing_summary_and_guard_comparison": true,
+    "provisional_findings_and_native_questions": true,
+    "no_overflow_or_browser_errors": true,
+    "write_attempt_statuses": [
+      403,
+      403,
+      403
+    ],
+    "qa_harness_notes": [
+      "CSS uppercase step labels validated case-insensitively against URL step state",
+      "Previous after forward to step 9 correctly returns step 8; original plan expected stale step 7"
+    ],
+    "focused_history_followup_steps": 24
   }
 }

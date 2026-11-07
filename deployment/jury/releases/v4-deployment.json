@@ -1,0 +1,22 @@
+{
+  "project_id": "appgprj_6aeeeefd422881919acadfc0e3ff7f1f",
+  "public_url": "https://undrift-jury-demo.equalglass4.chatgpt.site",
+  "version_number": 4,
+  "version_id": "appgprj_6aeeeefd422881919acadfc0e3ff7f1f~appgver_b1c7e99b6f908191a7d2170eed0c4833",
+  "deployment_id": "appgdep_6aef80c6eb688191ad6dee5d0ed893fd",
+  "source_commit": "738f864078ce8e61b72247ad6b95887b4e4a5090",
+  "implementation_checkpoint": "ee2b163",
+  "snapshot_id": "5341fcca1bc0da916563350862d40de901d55be2a39532f643c61b54628b47b9",
+  "worker_sha256": "a554f246d1914ec82eb5eebae608a17f9e4f9f3ea916ed86b83cd38ee01b2b41",
+  "archive_content_hash": "sha256:bc61bfb2c7415d4c1ebb11060205eff4fb7d5bb1ab0b9af32e31b63a57e57d27",
+  "local_tar_sha256": "020d7ef8600bf108097fc12f616eef2f215a7c72e20246e3f2ae4ecc07a72035",
+  "archives": 13,
+  "mode": "historical_readonly",
+  "runtime_secrets": 0,
+  "env_set_revision": 0,
+  "mcp_server": false,
+  "laptop_or_tunnel_dependency": false,
+  "deployed_at": "2026-11-07T19:49:39.394897+00:00",
+  "rollback_version": 3,
+  "rollback_version_id": "appgprj_6aeeeefd422881919acadfc0e3ff7f1f~appgver_ccb7ed0b51348191b2a28f7e1f44d001"
+}

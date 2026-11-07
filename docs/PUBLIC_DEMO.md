@@ -8,9 +8,9 @@ It has no dependency on the laptop, ngrok, local API services, Cominty availabil
 or GitHub credentials. The operational Python application and local reviewer flow
 remain unchanged and separate.
 
-## UI update for v4 (prepared, not deployed)
+## Final UX update (Sites version 5, deployed)
 
-The public site serves the v4 snapshot. A UI-only update is prepared locally. It keeps the **same snapshot** `5341fcca…`, all 13 archives and the unchanged Worker code; only the built interface differs. Its record is `deployment/jury/release-v4-ux-prepared.json`, with worker `e8238e03b4cd43f9dd24fdf57057a1d25a163a6c113109da65b4bb1aac46c52b`.
+The public site serves the v4 snapshot with the final UI update deployed as **Sites version 5**. It keeps the **same snapshot** `5341fcca…`, all 13 archives and the unchanged Worker code; only the built interface differs. Its record is `deployment/jury/release-v4-ux-prepared.json`, with worker `e8238e03b4cd43f9dd24fdf57057a1d25a163a6c113109da65b4bb1aac46c52b`.
 
 What the update changes:
 - **Guided walkthrough:**
@@ -27,7 +27,7 @@ What the update changes:
   - "Final-reply check" with an explanation;
   - a phase strip for the clarification conversation.
 
-Verification:
+Preparation verification:
 - the v4 verifier passed;
 - the 117-page archive × view matrix found no errors;
 - all 10 steps passed, including back and forward;
@@ -36,11 +36,13 @@ Verification:
 - the phone layout passed;
 - 97 UI, 504 Python and 5 Worker tests passed.
 
-**Codex handoff:** follow the v4 handoff below with the rebuilt `.tools/jury-site-v4/`, from `dist/` through `PUBLIC-REPLAY.json`. Save and deploy that exact version, keeping the current one as the rollback. `/api/demo` must still report snapshot `5341fcca…`. Then run `verify_jury_v4.py` against the public URL.
+Independent public verification passed: all ten walkthrough steps, back/forward and Previous/Next, all 13 grouped archive selections, mobile/deep links, the publishing panel and Guard comparison; 14 browser routes and all 44 write-denial probes passed. The publication copy passed 97 UI tests, 503 backend tests with one private portable-Node-path skip, five Worker tests, TypeScript and a production build. Exact version identity and sanitized verification are in `deployment/jury/deployment.json` and `deployment/jury/verification.json`. Sites version 4 remains saved for rollback.
 
-## Release v4 (deployed and verified)
+**Reproduction:** use the authenticated Sites workflow with the prepared `.tools/jury-site-v4/`, from `dist/` through `PUBLIC-REPLAY.json`. Save and deploy that exact version, keeping Sites version 4 as the rollback. `/api/demo` must still report snapshot `5341fcca…`. Then run `verify_jury_v4.py` against the public URL.
 
-The public site serves **Sites version 4**, deployed through the authenticated Codex Sites workflow without rebuilding or re-exporting the prepared evidence. Exact release identity and public verification are in `deployment/jury/deployment.json` and `deployment/jury/verification.json`. The preparation record remains unchanged.
+## Earlier v4 interface (Sites version 4 rollback)
+
+The previous interface is retained as **Sites version 4** for rollback. It was deployed through the authenticated Codex Sites workflow without rebuilding or re-exporting the prepared evidence. Its preserved identity and verification are in `deployment/jury/releases/v4-deployment.json` and `deployment/jury/releases/v4-verification.json`. The preparation record remains unchanged.
 
 | | |
 |---|---|
