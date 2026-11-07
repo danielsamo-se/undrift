@@ -14,7 +14,7 @@ import type {
   Conversation,
   ReliabilityReport,
   AutonomySnapshot, AutonomyPolicy, AutonomyMode,
-  GuardOverview, GuardCheck,
+  GuardOverview, GuardCheck, MemoryRecall, MemorySnapshot, NotificationsSnapshot, NotificationDelivery,
 } from "./types";
 
 export class ApiError extends Error {
@@ -86,7 +86,14 @@ const enc = encodeURIComponent;
 export const api = {
   guard: (signal?: AbortSignal) => request<GuardOverview>('/api/guard', { signal }),
   guardCheck: (body: { candidate: string; channel_id: string; evidence_document_ids: string[]; facts: string[]; confirm_paid: boolean }) =>
-    authorized<{ check: GuardCheck }>('/api/guard/checks', body),
+    authorized<{ check: GuardCheck; memory_recall: MemoryRecall | null }>('/api/guard/checks', body),
+  guardDetail: (id: string, signal?: AbortSignal) =>
+    request<{ check: GuardCheck; memory_recall: MemoryRecall | null }>(`/api/guard/checks/${enc(id)}`, { signal }),
+  memory: (signal?: AbortSignal) => request<MemorySnapshot>('/api/memory', { signal }),
+  rememberCheck: (check_id: string) => authorized<{ file: { path: string; version: string } }>('/api/memory/interpretations', { check_id }),
+  rememberFact: (statement: string) => authorized<{ file: { path: string; version: string } }>('/api/memory/facts', { statement }),
+  notifications: (signal?: AbortSignal) => request<NotificationsSnapshot>('/api/notifications', { signal }),
+  notify: (key: string, confirm_paid: boolean) => authorized<{ delivery: NotificationDelivery }>('/api/notifications', { key, confirm_paid }),
   autonomy: (signal?: AbortSignal) => request<AutonomySnapshot>('/api/autonomy', { signal }),
   configureAutonomy: (channel: string, body: { expected_version: number; mode: AutonomyMode; max_per_run: number; note: string }) =>
     authorized<{ policy: AutonomyPolicy }>(`/api/autonomy/${enc(channel)}`, body),

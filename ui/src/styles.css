@@ -3048,3 +3048,18 @@ ins {
 .guard-side .plain-list > li {
   min-width: 0;
 }
+
+.mem-status { display: inline-block; padding: 0 6px; border-radius: 5px; font-size: 11.5px; font-weight: 600; border: 1px solid currentColor; }
+.mem-authoritative { color: var(--ok); }
+.mem-historical { color: var(--warn); }
+.mem-unverified { color: var(--ink-2); }
+.integrations-page .note { display: block; }
+.integrations-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.integrations-grid > section { display: grid; gap: 12px; min-width: 0; }
+.integration-card { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); min-width: 0; }
+.integration-card h3 { margin: 0; font-size: 13.5px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.integration-card pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; margin: 0; padding: 8px 10px; background: var(--bg); border-radius: var(--r); }
+.origin-tag { font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 5px; color: var(--ink-2); border: 1px solid var(--line); }
+.origin-tag.is-cominty { color: var(--ok); border-color: currentColor; }
+@media (max-width: 900px) { .integrations-grid { grid-template-columns: minmax(0, 1fr); } }
+.link { background: none; border: 0; padding: 0; color: var(--accent, inherit); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; font: inherit; }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ApiError, api } from '../api/client';
 import { useReviewerSession } from '../api/session';
-import type { GuardCheck, GuardDecision, GuardSource } from '../api/types';
+import type { GuardCheck, GuardDecision, GuardSource, MemoryRecall } from '../api/types';
 import { UnlockDialog } from '../components/ReviewerSession';
 import { ErrorState, LoadingBlock, PolicyVersion, Spinner } from '../components/ui';
 import { useImpact } from '../lib/data';
@@ -73,10 +73,43 @@ export function GuardResult({ check }: { check: GuardCheck }) {
   );
 }
 
+export const MEMORY_STATUS: Record<string, string> = {
+  authoritative: 'Current policy', historical: 'Historical (older policy)', unverified: 'Unverified (ignored)',
+};
+
+export function MemoryRecallPanel({ recall, check, canSave, onSaved }: {
+  recall: MemoryRecall | null; check: GuardCheck; canSave: boolean; onSaved: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const eligible = check.decision_source === 'cominty_guard' && check.verification.ok && check.decision !== 'NEEDS_REVIEW';
+  async function save() {
+    setBusy(true); setMsg(null);
+    try { const r = await api.rememberCheck(check.id); setMsg(`Saved to Cominty Memory: ${r.file.path}`); onSaved(); }
+    catch (e) { setMsg(e instanceof ApiError ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
+  return <div className="guard-block memory-recall" data-testid="memory-recall"><h3>Cominty Memory</h3>
+    {recall === null ? <p className="muted small">No memory lookup recorded for this check.</p>
+      : recall.status === 'error' ? <p className="note note-warn">{recall.error}</p>
+      : recall.matches.length === 0 ? <p className="muted small">Looked up namespace <code>{recall.namespace}</code>: no remembered interpretation of this exact text.</p>
+      : <ul className="plain-list">{recall.matches.map(m => <li key={m.path}>
+          <span className={`mem-status mem-${m.status}`}>{MEMORY_STATUS[m.status]}</span>{' '}
+          Remembered verdict <strong>{m.verdict}</strong> under policy v{m.policy.version}, from check{' '}
+          <button type="button" className="link" onClick={() => m.source_check_id && navigate('guard', m.source_check_id)}><code>{m.source_check_id}</code></button>
+          {' '}· <code>{m.path}</code></li>)}</ul>}
+    {recall && recall.matches.length > 0 && <p className="muted small">Memory is context only. The decision above was computed independently; memory can never release text.</p>}
+    {eligible && canSave && <button type="button" className="btn" disabled={busy} onClick={() => void save()}>{busy && <Spinner />} Save verified interpretation to Cominty Memory</button>}
+    {msg && <p className="small" role="status">{msg}</p>}
+  </div>;
+}
+
 export function GuardView({ selectedId = null }: { selectedId?: string | null }) {
   const jury = useJury(); const session = useReviewerSession(); const live = useLive();
   const overview = useResource(signal => api.guard(signal), live.latestSeq);
   const impact = useImpact();
+  const detail = useResource(signal => selectedId && !jury.readonly ? api.guardDetail(selectedId, signal) : Promise.resolve(null),
+    `${selectedId}:${live.latestSeq}`);
   const [candidate, setCandidate] = useState('');
   const [channel, setChannel] = useState('support-snippets');
   const [evidence, setEvidence] = useState<string[]>([]);
@@ -93,6 +126,7 @@ export function GuardView({ selectedId = null }: { selectedId?: string | null })
   const docs = impact.data?.documents ?? [];
   const channels = impact.data?.channels ?? [];
   const selected = (fresh && fresh.id === selectedId ? fresh : o.checks.find(c => c.id === selectedId)) ?? null;
+  const recall = detail.data && detail.data.check.id === selectedId ? detail.data.memory_recall : null;
 
   async function verify() {
     setBusy(true); setError(null);
@@ -137,7 +171,9 @@ export function GuardView({ selectedId = null }: { selectedId?: string | null })
         {error && <p role="alert" className="field-error">{error}</p>}
       </form>
       <div className="guard-side">
-        {selected ? <GuardResult check={selected} /> : <p className="muted">Run a check or select a recorded one.</p>}
+        {selected ? <><GuardResult check={selected} />
+          <MemoryRecallPanel recall={recall} check={selected} canSave={!readonly && !!session} onSaved={detail.reload} /></>
+          : <p className="muted">Run a check or select a recorded one.</p>}
         <section className="section"><h2 className="guard-h2">Recorded checks</h2>
           {o.checks.length ? <ul className="plain-list">{o.checks.map(c => <li key={c.id}>
             <button className="row-link" onClick={() => navigate('guard', c.id)}>

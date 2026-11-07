@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-export type View = "overview" | "impact" | "review" | "activity" | "reliability" | 'autonomy' | 'guard' | 'tour';
+export type View = "overview" | "impact" | "review" | "activity" | "reliability" | 'autonomy' | 'guard' | 'integrations' | 'tour';
 export interface Route {
   view: View;
   param: string | null;
 }
 
-const VIEWS: View[] = ["overview", "impact", "review", "activity", "reliability", 'autonomy', 'guard', 'tour'];
+const VIEWS: View[] = ["overview", "impact", "review", "activity", "reliability", 'autonomy', 'guard', 'integrations', 'tour'];
 
 export function parseHash(hash: string): Route {
   const [view, ...rest] = hash.replace(/^#\/?/, "").split("/");

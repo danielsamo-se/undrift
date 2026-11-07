@@ -30,6 +30,7 @@ import config
 import clarification
 import autonomy
 import guard
+import integrations
 import readmodel
 import workflow
 from store import Store
@@ -75,6 +76,23 @@ class GuardBody(BaseModel):
     channel_id: str = Field(min_length=1, max_length=64)
     evidence_document_ids: list[str] = Field(default_factory=list, max_length=guard.MAX_EVIDENCE)
     facts: list[str] = Field(default_factory=list, max_length=guard.MAX_FACTS)
+    confirm_paid: bool = False
+
+
+class MemoryInterpretationBody(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    check_id: str = Field(min_length=1, max_length=64)
+
+
+class MemoryFactBody(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    statement: str = Field(min_length=1, max_length=integrations.MAX_FACT)
+    policy_id: str = Field(default=guard.POLICY_ID, min_length=1, max_length=64)
+
+
+class NotificationBody(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    key: str = Field(min_length=64, max_length=64)
     confirm_paid: bool = False
 
 
@@ -165,7 +183,13 @@ def _legacy_proposal_evidence(proposal: Any, store: Store, runs_dir: Path) -> st
 
 def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
               ui_dir: Path | None = UI_DIST, publisher=None, guard_journal=None,
-              guard_executor=None) -> ASGIApp:
+              guard_executor=None, integration_journal=None, memory=None, notifier=None) -> ASGIApp:
+    if integration_journal is None and os.environ.get('UNDRIFT_INTEGRATIONS_DB', '').strip():
+        integration_journal = integrations.IntegrationJournal(os.environ['UNDRIFT_INTEGRATIONS_DB'].strip())
+    if memory is None:
+        memory = integrations.memory_from_env()
+    if notifier is None:
+        notifier = integrations.notifier_from_env()
     if guard_journal is None and os.environ.get('UNDRIFT_GUARD_DB', '').strip():
         guard_journal = guard.GuardJournal(os.environ['UNDRIFT_GUARD_DB'].strip())
     if guard_executor is None:
@@ -317,7 +341,8 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
         found = await run_in_threadpool(lambda: guard_journal.get(cid, store.identity()) if guard_journal else None)
         if found is None:
             raise workflow.NotFound(f'unknown guard check {cid!r}')
-        return JSONResponse({'check': found})
+        recall = await run_in_threadpool(integrations.recall_of, store, integration_journal, cid)
+        return JSONResponse({'check': found, 'memory_recall': recall})
 
     async def guard_run(request: Request) -> JSONResponse:
         # Authenticate before parsing; Guard validation never sends or publishes anything.
@@ -328,7 +353,43 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
             raise workflow.Conflict('Guard audit journal is not configured for this service')
         result = await run_in_threadpool(lambda: guard.run_check(
             store, guard_journal, guard_executor, requested_by=reviewer, **body.model_dump()))
-        return JSONResponse({'check': result}, status_code=201)
+        # Memory recall happens after the decision is recorded; it can never change it.
+        recall = await run_in_threadpool(integrations.recall_for_check, store, integration_journal, memory, result)
+        return JSONResponse({'check': result, 'memory_recall': recall}, status_code=201)
+
+    async def memory_overview(_: Request) -> JSONResponse:
+        return JSONResponse(await run_in_threadpool(integrations.memory_snapshot, store, integration_journal, memory))
+
+    def _need_journal():
+        if integration_journal is None:
+            raise workflow.Conflict('integration audit journal is not configured for this service')
+
+    async def memory_interpretation(request: Request) -> JSONResponse:
+        reviewer = await run_in_threadpool(workflow.authorize, store, _token(request), 'memory.save', ('memory', 'request'))
+        body = await _body(request, MemoryInterpretationBody)
+        _need_journal()
+        return JSONResponse(await run_in_threadpool(lambda: integrations.save_guard_interpretation(
+            store, guard_journal, integration_journal, memory, check_id=body.check_id, actor=reviewer)), status_code=201)
+
+    async def memory_fact(request: Request) -> JSONResponse:
+        reviewer = await run_in_threadpool(workflow.authorize, store, _token(request), 'memory.save', ('memory', 'request'))
+        body = await _body(request, MemoryFactBody)
+        _need_journal()
+        return JSONResponse(await run_in_threadpool(lambda: integrations.save_reviewer_fact(
+            store, integration_journal, memory, statement=body.statement, policy_id=body.policy_id, actor=reviewer)),
+            status_code=201)
+
+    async def notifications_overview(_: Request) -> JSONResponse:
+        return JSONResponse(await run_in_threadpool(integrations.notifications_snapshot, store, integration_journal,
+                                                    notifier, memory))
+
+    async def notification_send(request: Request) -> JSONResponse:
+        reviewer = await run_in_threadpool(workflow.authorize, store, _token(request), 'notification.send',
+                                           ('notification', 'request'))
+        body = await _body(request, NotificationBody)
+        return JSONResponse({'delivery': await run_in_threadpool(lambda: integrations.send_notification(
+            store, integration_journal, notifier, key=body.key, actor=reviewer, confirm_paid=body.confirm_paid))},
+            status_code=201)
 
     async def autonomy_settings(request: Request) -> JSONResponse:
         if request.method=='POST':
@@ -415,6 +476,11 @@ def build_app(store: Store, runs_dir: Path = readmodel.RUNS_DIR,
             Route('/api/guard', guard_overview),
             Route('/api/guard/checks', guard_run, methods=['POST']),
             Route('/api/guard/checks/{check_id}', guard_check),
+            Route('/api/memory', memory_overview),
+            Route('/api/memory/interpretations', memory_interpretation, methods=['POST']),
+            Route('/api/memory/facts', memory_fact, methods=['POST']),
+            Route('/api/notifications', notifications_overview),
+            Route('/api/notifications', notification_send, methods=['POST']),
             Route('/api/autonomy',autonomy_settings),
             Route('/api/autonomy/{channel_id}',autonomy_settings,methods=['POST']),
             Route('/api/reliability', reliability_report),

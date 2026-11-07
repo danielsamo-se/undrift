@@ -1,4 +1,4 @@
-import { Activity, GitPullRequest, LayoutGrid, Waypoints, ShieldCheck, ScanText } from "lucide-react";
+import { Activity, GitPullRequest, LayoutGrid, Waypoints, ShieldCheck, ScanText, Plug } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect } from "react";
 import { ReviewerControl } from "./components/ReviewerSession";
@@ -13,6 +13,7 @@ import { ReviewView } from "./views/Review";
 import { ReliabilityView } from './views/Reliability';
 import { AutonomyView } from './views/Autonomy';
 import { GuardView } from './views/Guard';
+import { IntegrationsView } from './views/Integrations';
 import { JuryProvider, JuryBanner, JuryGuide, useJury } from './lib/jury';
 
 const NAV: { view: View; label: string; icon: LucideIcon; key: string }[] = [
@@ -23,6 +24,7 @@ const NAV: { view: View; label: string; icon: LucideIcon; key: string }[] = [
   { view: 'reliability', label: 'Reliability', icon: ShieldCheck, key: '5' },
   { view: 'autonomy', label: 'Channel autonomy', icon: ShieldCheck, key: '6' },
   { view: 'guard', label: 'Guard', icon: ScanText, key: '7' },
+  { view: 'integrations', label: 'Memory & Slack', icon: Plug, key: '8' },
 ];
 
 export function Mark({ size = 20 }: { size?: number }) {
@@ -110,6 +112,7 @@ function Shell() {
         {route.view === 'reliability' && <ReliabilityView />}
         {route.view === 'autonomy' && <AutonomyView />}
         {route.view === 'guard' && <GuardView selectedId={route.param} />}
+        {route.view === 'integrations' && <IntegrationsView />}
       </main>
     </div>
   );

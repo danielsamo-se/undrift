@@ -297,6 +297,40 @@ export interface GuardOverview {
   journal_configured: boolean; checks: GuardCheck[]; sends_or_publishes: false;
 }
 
+export type MemoryStatus = 'authoritative' | 'historical' | 'unverified';
+export interface MemoryMatch {
+  path: string; version: string | null; status: MemoryStatus; verdict: string | null;
+  policy: { id: string; version: number; sha256: string }; source_check_id: string | null; message_id: string | null;
+  saved_by: string | null; saved_at: string | null;
+}
+export interface MemoryRecall { id: string; check_id: string; namespace: string; status: 'ok' | 'error'; matches: MemoryMatch[]; error: string | null; created_at: string }
+export interface MemoryRecord {
+  contract: string; kind: 'verified_interpretation' | 'reviewer_fact';
+  policy: { id: string; version: number; sha256: string }; verdict?: string; statement?: string; candidate_redacted?: string;
+  claims?: { claim: string; assessment: string; evidence_refs: string[]; reason: string }[];
+  source: { guard_check_id?: string; message_id?: string; thread_id?: string; agent_id?: string; database_id?: string };
+  saved_by: string; saved_at: string;
+}
+export interface MemoryFile {
+  path: string; purpose: string | null; version: string | null; created_at: string | null; updated_at: string | null;
+  status: MemoryStatus; record: MemoryRecord | null; written_by_this_service: boolean; changed_since_write: boolean;
+}
+export interface MemoryWrite { id: string; created_at: string; actor: string; namespace: string; path: string; kind: string; policy_version: number; cominty_version: string; source_check_id: string | null }
+export interface MemorySnapshot { live: boolean; namespace: string; files: MemoryFile[]; writes: MemoryWrite[]; error: string | null; journal_configured: boolean }
+export interface NotificationDelivery {
+  id: string; created_at: string; key: string; kind: string; subject_id: string; phase: 'started' | 'delivered' | 'unconfirmed' | 'failed';
+  actor: string; channel: string; text: string; error: string | null;
+  execution: { mode: string; attempt_id?: string; message_id?: string; duration_s?: number; cost?: { total?: string } | null;
+    slack?: { message_ts?: string; permalink?: string; channel?: string } | null; tool_calls?: { name: string; status: string }[] };
+}
+export interface NotificationsSnapshot {
+  mode: string; paid: boolean; connection: string; agent_configured: boolean; channel: string | null;
+  connector: { name: string; title?: string; is_enabled?: boolean; requires_oauth_connect?: boolean; connection_status?: string | null; missing?: boolean; alternatives?: string[] } | null;
+  connector_error: string | null; journal_configured: boolean; grants_approval: false;
+  candidates: { key: string; kind: string; subject_id: string; text: string; last_phase: string | null }[];
+  deliveries: NotificationDelivery[];
+}
+
 export type AutonomyMode = 'review_required' | 'bounded_auto' | 'pull_request' | 'manual_only';
 export interface AutonomyPolicy extends Channel {
   channel_id: string; version: number; mode: AutonomyMode; effective_mode: AutonomyMode;
