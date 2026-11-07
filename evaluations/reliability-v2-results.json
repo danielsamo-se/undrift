@@ -1,62 +1,8 @@
 {
   "version": "reliability-v1",
   "series_id": "reliability-v2",
-  "state": "frozen",
+  "state": "completed",
   "evidence_kind": "real_cominty_evaluation",
-  "results": [],
-  "aggregate": {
-    "planned_conversations": 5,
-    "recorded_conversations": 0,
-    "not_started": 5,
-    "reconciled_conversations": 0,
-    "statuses": {},
-    "statistics": {
-      "duration_s": {
-        "minimum": null,
-        "mean": null,
-        "maximum": null,
-        "defined_count": 0,
-        "result_count": 0
-      },
-      "reserved_parent_steps": {
-        "minimum": null,
-        "mean": null,
-        "maximum": null,
-        "defined_count": 0,
-        "result_count": 0
-      },
-      "observed_llm_rounds": {
-        "minimum": null,
-        "mean": null,
-        "maximum": null,
-        "defined_count": 0,
-        "result_count": 0
-      },
-      "native_question_count": {
-        "minimum": null,
-        "mean": null,
-        "maximum": null,
-        "defined_count": 0,
-        "result_count": 0
-      },
-      "mcp_error_count": {
-        "minimum": null,
-        "mean": null,
-        "maximum": null,
-        "defined_count": 0,
-        "result_count": 0
-      }
-    },
-    "reported_total_cost": "0",
-    "cost_statistics": {
-      "minimum": null,
-      "mean": null,
-      "maximum": null,
-      "defined_count": 0
-    },
-    "message_count": 0
-  },
-  "stop_reason": null,
   "protocol_sha256": "ac244ecdc3ed033932ff46f8be80fa49f9dc51c2833d1a1307044ee068fa3cca",
   "protocol": {
     "version": "reliability-v1",
@@ -228,5 +174,978 @@
     "sdk_version": "1.2.0",
     "steps_measurement": "Reserved parent allowance plus unique llm correlation IDs; no exact consumed-step API."
   },
+  "results": [
+    {
+      "root_run_id": "run-3024c771eb3d14ec",
+      "thread_id": "674ca498-7a10-417b-8d36-4451cfa27dc7",
+      "status": "incomplete",
+      "reconciled": true,
+      "evidence_kind": "real_cominty",
+      "message_count": 2,
+      "phase_run_ids": [
+        "run-3024c771eb3d14ec",
+        "run-0b51f4fa84ca3788"
+      ],
+      "message_ids": [
+        "b022447f-1f13-4759-b69b-c04883a173eb",
+        "6563254d-87b9-439f-a0b6-87494e7ab105"
+      ],
+      "metrics": {
+        "accuracy": 1.0,
+        "outdated_recall": 1.0,
+        "outdated_precision": 1.0,
+        "false_positives": 0,
+        "outdated_misses": 0,
+        "paraphrase_recall": 1.0,
+        "unknown_recall": 1.0,
+        "unknown_precision": 1.0,
+        "protected_classification_accuracy": 1.0,
+        "native_clarification_recall": 1.0,
+        "native_clarification_precision": 1.0,
+        "retrieval_coverage": 1.0
+      },
+      "observed_unreconciled_metrics": null,
+      "missing_final_classifications": [],
+      "misclassified_document_ids": [],
+      "category_counts": {
+        "OUTDATED": 7,
+        "EXISTING_COMMITMENT": 4,
+        "UNKNOWN": 5,
+        "UNRELATED": 5,
+        "VALID_DISTINCT": 3
+      },
+      "provisional_category_counts": {},
+      "native_question_count": 5,
+      "native_question_document_ids": [
+        "bot-003",
+        "crm-002",
+        "help-002",
+        "help-004",
+        "support-002"
+      ],
+      "native_question_integrity": true,
+      "answered_count": 5,
+      "new_questions_after_continuation": 0,
+      "protected_automation_safe": true,
+      "mcp_calls": {
+        "list_channels": 2,
+        "get_policy": 2,
+        "search_documents": 7,
+        "get_document": 48,
+        "similar_documents": 1,
+        "record_finding": 43
+      },
+      "mcp_error_count": 0,
+      "unattributed_mcp_calls": 0,
+      "unattributed_scoped_mcp_calls": 0,
+      "search_queries": [
+        "return days refund period",
+        "send back money customer changed mind",
+        "before purchased earlier promised unless depends",
+        "refund shipping fee returns window",
+        "eligible exchange receipt weeks month",
+        "statutory withdrawal right 14 days",
+        ""
+      ],
+      "search_strategy": {
+        "enforced": true,
+        "distinct_formulated_queries_before_catalog": 6,
+        "number_free_query": true,
+        "lead_followed": true,
+        "no_search_leads": false,
+        "catalog_complete": true,
+        "search_calls": 7,
+        "similarity_calls": 1
+      },
+      "strategy_validation": null,
+      "continuation_blocker": "The latest phase is not awaiting native clarification.",
+      "retrieval_document_ids": [
+        "bot-001",
+        "bot-002",
+        "bot-003",
+        "crm-001",
+        "crm-002",
+        "crm-003",
+        "crm-004",
+        "doc-001",
+        "help-001",
+        "help-002",
+        "help-003",
+        "help-004",
+        "legal-001",
+        "legal-002",
+        "mail-001",
+        "mail-002",
+        "mail-003",
+        "support-001",
+        "support-002",
+        "support-003",
+        "support-004",
+        "web-002",
+        "web-003",
+        "web-004"
+      ],
+      "final_retrieval_complete": true,
+      "reported_cost": "0.9063769",
+      "cost_reporting_complete": true,
+      "duration_s": 336.4,
+      "reserved_parent_steps": 60,
+      "observed_llm_rounds": 11,
+      "steps_measurement": "Unique llm stream correlation IDs; not a provider-certified parent-step counter.",
+      "proposal_count": 6,
+      "proposal_document_ids": [
+        "bot-001",
+        "doc-001",
+        "help-001",
+        "mail-002",
+        "support-001",
+        "web-003"
+      ],
+      "proposal_ids": [
+        "prop-827c99fde040",
+        "prop-f6d16be85ced",
+        "prop-c7112deeb1de",
+        "prop-1831a8769c1e",
+        "prop-cccad7e4a2bd",
+        "prop-50463c8f5de0"
+      ],
+      "proposal_statuses": {
+        "pending_review": 6
+      },
+      "execution_evidence_rows": 51,
+      "errors": [
+        "Native questions require reviewer answers",
+        "documents require clarification or manual correction"
+      ],
+      "slot": 1,
+      "database": "data/reliability-v2/evaluation-01.db",
+      "database_id": "3afdc367a5384356a685c790303f2f83"
+    },
+    {
+      "root_run_id": "run-63b0c3097c73db9f",
+      "thread_id": "ac60d918-366a-4be1-b37d-90b58fd09539",
+      "status": "failed",
+      "reconciled": false,
+      "evidence_kind": "real_cominty",
+      "message_count": 1,
+      "phase_run_ids": [
+        "run-63b0c3097c73db9f"
+      ],
+      "message_ids": [
+        "9254d4bc-ee04-4d0e-8f95-9fe5189be979"
+      ],
+      "metrics": {
+        "accuracy": 0.0,
+        "outdated_recall": 0.0,
+        "outdated_precision": null,
+        "false_positives": 0,
+        "outdated_misses": 7,
+        "paraphrase_recall": 0.0,
+        "unknown_recall": 0.0,
+        "unknown_precision": null,
+        "protected_classification_accuracy": 0.0,
+        "native_clarification_recall": 1.0,
+        "native_clarification_precision": 1.0,
+        "retrieval_coverage": 1.0
+      },
+      "observed_unreconciled_metrics": {
+        "accuracy": 0.7916666666666666,
+        "outdated_recall": 1.0,
+        "outdated_precision": 1.0,
+        "false_positives": 0,
+        "outdated_misses": 0,
+        "paraphrase_recall": 1.0,
+        "unknown_recall": 0.0,
+        "unknown_precision": null,
+        "protected_classification_accuracy": 0.8333333333333334
+      },
+      "missing_final_classifications": [
+        "bot-001",
+        "bot-002",
+        "bot-003",
+        "crm-001",
+        "crm-002",
+        "crm-003",
+        "crm-004",
+        "doc-001",
+        "help-001",
+        "help-002",
+        "help-003",
+        "help-004",
+        "legal-001",
+        "legal-002",
+        "mail-001",
+        "mail-002",
+        "mail-003",
+        "support-001",
+        "support-002",
+        "support-003",
+        "support-004",
+        "web-002",
+        "web-003",
+        "web-004"
+      ],
+      "misclassified_document_ids": [
+        "bot-001",
+        "bot-002",
+        "bot-003",
+        "crm-001",
+        "crm-002",
+        "crm-003",
+        "crm-004",
+        "doc-001",
+        "help-001",
+        "help-002",
+        "help-003",
+        "help-004",
+        "legal-001",
+        "legal-002",
+        "mail-001",
+        "mail-002",
+        "mail-003",
+        "support-001",
+        "support-002",
+        "support-003",
+        "support-004",
+        "web-002",
+        "web-003",
+        "web-004"
+      ],
+      "category_counts": {},
+      "provisional_category_counts": {
+        "OUTDATED": 7,
+        "EXISTING_COMMITMENT": 4,
+        "VALID_DISTINCT": 3,
+        "UNRELATED": 5
+      },
+      "native_question_count": 5,
+      "native_question_document_ids": [
+        "bot-003",
+        "crm-002",
+        "help-002",
+        "help-004",
+        "support-002"
+      ],
+      "native_question_integrity": true,
+      "answered_count": 0,
+      "new_questions_after_continuation": 0,
+      "protected_automation_safe": true,
+      "mcp_calls": {
+        "list_channels": 1,
+        "get_policy": 1,
+        "search_documents": 5,
+        "get_document": 24,
+        "record_finding": 19
+      },
+      "mcp_error_count": 0,
+      "unattributed_mcp_calls": 0,
+      "unattributed_scoped_mcp_calls": 0,
+      "search_queries": [
+        "return days period",
+        "60 days 30 days",
+        "refund send back item customer changes mind",
+        "if purchased earlier promised unless depends",
+        ""
+      ],
+      "search_strategy": {
+        "enforced": true,
+        "distinct_formulated_queries_before_catalog": 4,
+        "number_free_query": true,
+        "lead_followed": false,
+        "no_search_leads": false,
+        "catalog_complete": true,
+        "search_calls": 5,
+        "similarity_calls": 0
+      },
+      "strategy_validation": {
+        "status": "failed",
+        "code": "search_strategy_violation",
+        "message": "discovery search-first contract was not satisfied",
+        "details": {
+          "observed": {
+            "enforced": true,
+            "distinct_formulated_queries_before_catalog": 4,
+            "number_free_query": true,
+            "lead_followed": false,
+            "no_search_leads": false,
+            "catalog_complete": true,
+            "search_calls": 5,
+            "similarity_calls": 0
+          }
+        }
+      },
+      "continuation_blocker": "Search strategy failed. Questions are retained as evidence; start a new independent analysis.",
+      "retrieval_document_ids": [
+        "bot-001",
+        "bot-002",
+        "bot-003",
+        "crm-001",
+        "crm-002",
+        "crm-003",
+        "crm-004",
+        "doc-001",
+        "help-001",
+        "help-002",
+        "help-003",
+        "help-004",
+        "legal-001",
+        "legal-002",
+        "mail-001",
+        "mail-002",
+        "mail-003",
+        "support-001",
+        "support-002",
+        "support-003",
+        "support-004",
+        "web-002",
+        "web-003",
+        "web-004"
+      ],
+      "final_retrieval_complete": true,
+      "reported_cost": "0.39762525",
+      "cost_reporting_complete": true,
+      "duration_s": 166.8,
+      "reserved_parent_steps": 40,
+      "observed_llm_rounds": 6,
+      "steps_measurement": "Unique llm stream correlation IDs; not a provider-certified parent-step counter.",
+      "proposal_count": 0,
+      "proposal_document_ids": [],
+      "proposal_ids": [],
+      "proposal_statuses": {},
+      "execution_evidence_rows": 27,
+      "errors": [
+        "discovery search-first contract was not satisfied"
+      ],
+      "slot": 2,
+      "database": "data/reliability-v2/evaluation-02.db",
+      "database_id": "b4476b3881fd40daa5038bcf8c33d3f4"
+    },
+    {
+      "root_run_id": "run-b9509efbe12a27d7",
+      "thread_id": "2623c647-7c28-4ba4-acf1-aec3b20bae2d",
+      "status": "incomplete",
+      "reconciled": true,
+      "evidence_kind": "real_cominty",
+      "message_count": 2,
+      "phase_run_ids": [
+        "run-b9509efbe12a27d7",
+        "run-403c6955efac8a29"
+      ],
+      "message_ids": [
+        "29ba6f4e-82d5-4e71-bad7-11ba9f1675e0",
+        "fd9d45e5-864d-433e-8a74-07285afebfa2"
+      ],
+      "metrics": {
+        "accuracy": 1.0,
+        "outdated_recall": 1.0,
+        "outdated_precision": 1.0,
+        "false_positives": 0,
+        "outdated_misses": 0,
+        "paraphrase_recall": 1.0,
+        "unknown_recall": 1.0,
+        "unknown_precision": 1.0,
+        "protected_classification_accuracy": 1.0,
+        "native_clarification_recall": 1.0,
+        "native_clarification_precision": 1.0,
+        "retrieval_coverage": 1.0
+      },
+      "observed_unreconciled_metrics": null,
+      "missing_final_classifications": [],
+      "misclassified_document_ids": [],
+      "category_counts": {
+        "UNKNOWN": 5,
+        "EXISTING_COMMITMENT": 4,
+        "OUTDATED": 7,
+        "UNRELATED": 5,
+        "VALID_DISTINCT": 3
+      },
+      "provisional_category_counts": {},
+      "native_question_count": 5,
+      "native_question_document_ids": [
+        "bot-003",
+        "crm-002",
+        "help-002",
+        "help-004",
+        "support-002"
+      ],
+      "native_question_integrity": true,
+      "answered_count": 5,
+      "new_questions_after_continuation": 0,
+      "protected_automation_safe": true,
+      "mcp_calls": {
+        "list_channels": 2,
+        "get_policy": 3,
+        "search_documents": 4,
+        "get_document": 72,
+        "record_finding": 43
+      },
+      "mcp_error_count": 0,
+      "unattributed_mcp_calls": 0,
+      "unattributed_scoped_mcp_calls": 0,
+      "search_queries": [
+        "depending on purchase date promotion offer earlier promised",
+        "voluntary return period days",
+        "send back items change of mind refund",
+        ""
+      ],
+      "search_strategy": {
+        "enforced": true,
+        "distinct_formulated_queries_before_catalog": 3,
+        "number_free_query": true,
+        "lead_followed": true,
+        "no_search_leads": false,
+        "catalog_complete": true,
+        "search_calls": 4,
+        "similarity_calls": 0
+      },
+      "strategy_validation": null,
+      "continuation_blocker": "The latest phase is not awaiting native clarification.",
+      "retrieval_document_ids": [
+        "bot-001",
+        "bot-002",
+        "bot-003",
+        "crm-001",
+        "crm-002",
+        "crm-003",
+        "crm-004",
+        "doc-001",
+        "help-001",
+        "help-002",
+        "help-003",
+        "help-004",
+        "legal-001",
+        "legal-002",
+        "mail-001",
+        "mail-002",
+        "mail-003",
+        "support-001",
+        "support-002",
+        "support-003",
+        "support-004",
+        "web-002",
+        "web-003",
+        "web-004"
+      ],
+      "final_retrieval_complete": true,
+      "reported_cost": "0.82557310",
+      "cost_reporting_complete": true,
+      "duration_s": 310.7,
+      "reserved_parent_steps": 60,
+      "observed_llm_rounds": 11,
+      "steps_measurement": "Unique llm stream correlation IDs; not a provider-certified parent-step counter.",
+      "proposal_count": 6,
+      "proposal_document_ids": [
+        "bot-001",
+        "doc-001",
+        "help-001",
+        "mail-002",
+        "support-001",
+        "web-003"
+      ],
+      "proposal_ids": [
+        "prop-1beb101d989b",
+        "prop-466a1dfe51f0",
+        "prop-461ac8e4dc96",
+        "prop-78d832db8f93",
+        "prop-ba57dc5a3c2d",
+        "prop-2ae3bb088841"
+      ],
+      "proposal_statuses": {
+        "pending_review": 6
+      },
+      "execution_evidence_rows": 51,
+      "errors": [
+        "Native questions require reviewer answers",
+        "documents require clarification or manual correction"
+      ],
+      "slot": 3,
+      "database": "data/reliability-v2/evaluation-03.db",
+      "database_id": "8dc2d31c35a1455daa0165899d154cf0"
+    },
+    {
+      "root_run_id": "run-2f762cf348c744b8",
+      "thread_id": "b328d7f8-f695-451b-8a3b-f281832ccd71",
+      "status": "failed",
+      "reconciled": false,
+      "evidence_kind": "real_cominty",
+      "message_count": 1,
+      "phase_run_ids": [
+        "run-2f762cf348c744b8"
+      ],
+      "message_ids": [
+        "524ca67e-6531-44ad-8fe1-f0dc1800079b"
+      ],
+      "metrics": {
+        "accuracy": 0.0,
+        "outdated_recall": 0.0,
+        "outdated_precision": null,
+        "false_positives": 0,
+        "outdated_misses": 7,
+        "paraphrase_recall": 0.0,
+        "unknown_recall": 0.0,
+        "unknown_precision": null,
+        "protected_classification_accuracy": 0.0,
+        "native_clarification_recall": 1.0,
+        "native_clarification_precision": 1.0,
+        "retrieval_coverage": 1.0
+      },
+      "observed_unreconciled_metrics": {
+        "accuracy": 0.7916666666666666,
+        "outdated_recall": 1.0,
+        "outdated_precision": 1.0,
+        "false_positives": 0,
+        "outdated_misses": 0,
+        "paraphrase_recall": 1.0,
+        "unknown_recall": 0.0,
+        "unknown_precision": null,
+        "protected_classification_accuracy": 0.8333333333333334
+      },
+      "missing_final_classifications": [
+        "bot-001",
+        "bot-002",
+        "bot-003",
+        "crm-001",
+        "crm-002",
+        "crm-003",
+        "crm-004",
+        "doc-001",
+        "help-001",
+        "help-002",
+        "help-003",
+        "help-004",
+        "legal-001",
+        "legal-002",
+        "mail-001",
+        "mail-002",
+        "mail-003",
+        "support-001",
+        "support-002",
+        "support-003",
+        "support-004",
+        "web-002",
+        "web-003",
+        "web-004"
+      ],
+      "misclassified_document_ids": [
+        "bot-001",
+        "bot-002",
+        "bot-003",
+        "crm-001",
+        "crm-002",
+        "crm-003",
+        "crm-004",
+        "doc-001",
+        "help-001",
+        "help-002",
+        "help-003",
+        "help-004",
+        "legal-001",
+        "legal-002",
+        "mail-001",
+        "mail-002",
+        "mail-003",
+        "support-001",
+        "support-002",
+        "support-003",
+        "support-004",
+        "web-002",
+        "web-003",
+        "web-004"
+      ],
+      "category_counts": {},
+      "provisional_category_counts": {
+        "EXISTING_COMMITMENT": 4,
+        "VALID_DISTINCT": 3,
+        "UNRELATED": 5,
+        "OUTDATED": 7
+      },
+      "native_question_count": 5,
+      "native_question_document_ids": [
+        "bot-003",
+        "crm-002",
+        "help-002",
+        "help-004",
+        "support-002"
+      ],
+      "native_question_integrity": true,
+      "answered_count": 0,
+      "new_questions_after_continuation": 0,
+      "protected_automation_safe": true,
+      "mcp_calls": {
+        "list_channels": 1,
+        "get_policy": 1,
+        "search_documents": 5,
+        "get_document": 24,
+        "record_finding": 19
+      },
+      "mcp_error_count": 0,
+      "unattributed_mcp_calls": 0,
+      "unattributed_scoped_mcp_calls": 0,
+      "search_queries": [
+        "withdrawal statutory right",
+        "return days refund period",
+        "ordered before earlier promised depends",
+        "send back change your mind money back",
+        ""
+      ],
+      "search_strategy": {
+        "enforced": true,
+        "distinct_formulated_queries_before_catalog": 4,
+        "number_free_query": true,
+        "lead_followed": false,
+        "no_search_leads": false,
+        "catalog_complete": true,
+        "search_calls": 5,
+        "similarity_calls": 0
+      },
+      "strategy_validation": {
+        "status": "failed",
+        "code": "search_strategy_violation",
+        "message": "discovery search-first contract was not satisfied",
+        "details": {
+          "observed": {
+            "enforced": true,
+            "distinct_formulated_queries_before_catalog": 4,
+            "number_free_query": true,
+            "lead_followed": false,
+            "no_search_leads": false,
+            "catalog_complete": true,
+            "search_calls": 5,
+            "similarity_calls": 0
+          }
+        }
+      },
+      "continuation_blocker": "Search strategy failed. Questions are retained as evidence; start a new independent analysis.",
+      "retrieval_document_ids": [
+        "bot-001",
+        "bot-002",
+        "bot-003",
+        "crm-001",
+        "crm-002",
+        "crm-003",
+        "crm-004",
+        "doc-001",
+        "help-001",
+        "help-002",
+        "help-003",
+        "help-004",
+        "legal-001",
+        "legal-002",
+        "mail-001",
+        "mail-002",
+        "mail-003",
+        "support-001",
+        "support-002",
+        "support-003",
+        "support-004",
+        "web-002",
+        "web-003",
+        "web-004"
+      ],
+      "final_retrieval_complete": true,
+      "reported_cost": "0.4312759",
+      "cost_reporting_complete": true,
+      "duration_s": 173.0,
+      "reserved_parent_steps": 40,
+      "observed_llm_rounds": 7,
+      "steps_measurement": "Unique llm stream correlation IDs; not a provider-certified parent-step counter.",
+      "proposal_count": 0,
+      "proposal_document_ids": [],
+      "proposal_ids": [],
+      "proposal_statuses": {},
+      "execution_evidence_rows": 31,
+      "errors": [
+        "discovery search-first contract was not satisfied"
+      ],
+      "slot": 4,
+      "database": "data/reliability-v2/evaluation-04.db",
+      "database_id": "831461e7d45e47429bf5d1da42c4a899"
+    },
+    {
+      "root_run_id": "run-34a4671e7471540c",
+      "thread_id": "71570d23-c580-4740-921f-789deed43269",
+      "status": "incomplete",
+      "reconciled": true,
+      "evidence_kind": "real_cominty",
+      "message_count": 2,
+      "phase_run_ids": [
+        "run-34a4671e7471540c",
+        "run-f87de0038ce80bc2"
+      ],
+      "message_ids": [
+        "721781bc-75c5-4713-aa9e-3939de9a55c1",
+        "275adb21-369d-4851-a94c-318b51847c62"
+      ],
+      "metrics": {
+        "accuracy": 1.0,
+        "outdated_recall": 1.0,
+        "outdated_precision": 1.0,
+        "false_positives": 0,
+        "outdated_misses": 0,
+        "paraphrase_recall": 1.0,
+        "unknown_recall": 1.0,
+        "unknown_precision": 1.0,
+        "protected_classification_accuracy": 1.0,
+        "native_clarification_recall": 1.0,
+        "native_clarification_precision": 1.0,
+        "retrieval_coverage": 1.0
+      },
+      "observed_unreconciled_metrics": null,
+      "missing_final_classifications": [],
+      "misclassified_document_ids": [],
+      "category_counts": {
+        "UNRELATED": 5,
+        "OUTDATED": 7,
+        "UNKNOWN": 5,
+        "VALID_DISTINCT": 3,
+        "EXISTING_COMMITMENT": 4
+      },
+      "provisional_category_counts": {},
+      "native_question_count": 5,
+      "native_question_document_ids": [
+        "bot-003",
+        "crm-002",
+        "help-002",
+        "help-004",
+        "support-002"
+      ],
+      "native_question_integrity": true,
+      "answered_count": 5,
+      "new_questions_after_continuation": 0,
+      "protected_automation_safe": true,
+      "mcp_calls": {
+        "list_channels": 2,
+        "get_policy": 2,
+        "search_documents": 4,
+        "get_document": 48,
+        "record_finding": 43
+      },
+      "mcp_error_count": 0,
+      "unattributed_mcp_calls": 0,
+      "unattributed_scoped_mcp_calls": 0,
+      "search_queries": [
+        "depending order earlier promised promotion eligible",
+        "return days refund period",
+        "send back items after buying customer changed mind",
+        ""
+      ],
+      "search_strategy": {
+        "enforced": true,
+        "distinct_formulated_queries_before_catalog": 3,
+        "number_free_query": true,
+        "lead_followed": true,
+        "no_search_leads": false,
+        "catalog_complete": true,
+        "search_calls": 4,
+        "similarity_calls": 0
+      },
+      "strategy_validation": null,
+      "continuation_blocker": "The latest phase is not awaiting native clarification.",
+      "retrieval_document_ids": [
+        "bot-001",
+        "bot-002",
+        "bot-003",
+        "crm-001",
+        "crm-002",
+        "crm-003",
+        "crm-004",
+        "doc-001",
+        "help-001",
+        "help-002",
+        "help-003",
+        "help-004",
+        "legal-001",
+        "legal-002",
+        "mail-001",
+        "mail-002",
+        "mail-003",
+        "support-001",
+        "support-002",
+        "support-003",
+        "support-004",
+        "web-002",
+        "web-003",
+        "web-004"
+      ],
+      "final_retrieval_complete": true,
+      "reported_cost": "0.72468625",
+      "cost_reporting_complete": true,
+      "duration_s": 279.2,
+      "reserved_parent_steps": 60,
+      "observed_llm_rounds": 10,
+      "steps_measurement": "Unique llm stream correlation IDs; not a provider-certified parent-step counter.",
+      "proposal_count": 6,
+      "proposal_document_ids": [
+        "bot-001",
+        "doc-001",
+        "help-001",
+        "mail-002",
+        "support-001",
+        "web-003"
+      ],
+      "proposal_ids": [
+        "prop-f28eb806b78e",
+        "prop-3867a1252ddc",
+        "prop-b7f72f4c5955",
+        "prop-ef9d38ccaa94",
+        "prop-6d6509466e94",
+        "prop-097f3f812b04"
+      ],
+      "proposal_statuses": {
+        "pending_review": 6
+      },
+      "execution_evidence_rows": 47,
+      "errors": [
+        "Native questions require reviewer answers",
+        "documents require clarification or manual correction"
+      ],
+      "slot": 5,
+      "database": "data/reliability-v2/evaluation-05.db",
+      "database_id": "a2fd8cc4ae444492bdfa70bb674f7e59"
+    }
+  ],
+  "stop_reason": null,
+  "aggregate": {
+    "planned_conversations": 5,
+    "recorded_conversations": 5,
+    "not_started": 0,
+    "reconciled_conversations": 3,
+    "statuses": {
+      "incomplete": 3,
+      "failed": 2
+    },
+    "statistics": {
+      "accuracy": {
+        "minimum": 0.0,
+        "mean": 0.6,
+        "maximum": 1.0,
+        "defined_count": 5,
+        "result_count": 5
+      },
+      "false_positives": {
+        "minimum": 0,
+        "mean": 0,
+        "maximum": 0,
+        "defined_count": 5,
+        "result_count": 5
+      },
+      "native_clarification_precision": {
+        "minimum": 1.0,
+        "mean": 1.0,
+        "maximum": 1.0,
+        "defined_count": 5,
+        "result_count": 5
+      },
+      "native_clarification_recall": {
+        "minimum": 1.0,
+        "mean": 1.0,
+        "maximum": 1.0,
+        "defined_count": 5,
+        "result_count": 5
+      },
+      "outdated_misses": {
+        "minimum": 0,
+        "mean": 2.8,
+        "maximum": 7,
+        "defined_count": 5,
+        "result_count": 5
+      },
+      "outdated_precision": {
+        "minimum": 1.0,
+        "mean": 1.0,
+        "maximum": 1.0,
+        "defined_count": 3,
+        "result_count": 5
+      },
+      "outdated_recall": {
+        "minimum": 0.0,
+        "mean": 0.6,
+        "maximum": 1.0,
+        "defined_count": 5,
+        "result_count": 5
+      },
+      "paraphrase_recall": {
+        "minimum": 0.0,
+        "mean": 0.6,
+        "maximum": 1.0,
+        "defined_count": 5,
+        "result_count": 5
+      },
+      "protected_classification_accuracy": {
+        "minimum": 0.0,
+        "mean": 0.6,
+        "maximum": 1.0,
+        "defined_count": 5,
+        "result_count": 5
+      },
+      "retrieval_coverage": {
+        "minimum": 1.0,
+        "mean": 1.0,
+        "maximum": 1.0,
+        "defined_count": 5,
+        "result_count": 5
+      },
+      "unknown_precision": {
+        "minimum": 1.0,
+        "mean": 1.0,
+        "maximum": 1.0,
+        "defined_count": 3,
+        "result_count": 5
+      },
+      "unknown_recall": {
+        "minimum": 0.0,
+        "mean": 0.6,
+        "maximum": 1.0,
+        "defined_count": 5,
+        "result_count": 5
+      },
+      "duration_s": {
+        "minimum": 166.8,
+        "mean": 253.22,
+        "maximum": 336.4,
+        "defined_count": 5,
+        "result_count": 5
+      },
+      "reserved_parent_steps": {
+        "minimum": 40,
+        "mean": 52,
+        "maximum": 60,
+        "defined_count": 5,
+        "result_count": 5
+      },
+      "observed_llm_rounds": {
+        "minimum": 6,
+        "mean": 9,
+        "maximum": 11,
+        "defined_count": 5,
+        "result_count": 5
+      },
+      "native_question_count": {
+        "minimum": 5,
+        "mean": 5,
+        "maximum": 5,
+        "defined_count": 5,
+        "result_count": 5
+      },
+      "mcp_error_count": {
+        "minimum": 0,
+        "mean": 0,
+        "maximum": 0,
+        "defined_count": 5,
+        "result_count": 5
+      }
+    },
+    "reported_total_cost": "3.28553740",
+    "cost_statistics": {
+      "minimum": "0.39762525",
+      "mean": "0.65710748",
+      "maximum": "0.9063769",
+      "defined_count": 5
+    },
+    "message_count": 8
+  },
+  "attempted_paid_messages": 8,
+  "cumulative_reported_cost": "3.28553740",
+  "updated_at": "2026-11-07T09:13:18.828466+00:00",
   "protected_historical_files_unchanged": true
 }

@@ -1,7 +1,14 @@
-# Reliability v2: frozen, awaiting paid authorization
+# Reliability v2: completed study and preparation record
 
-This is a fresh study, separate from the stopped `reliability-v1` conversation.
-No paid v2 messages have been attempted. No original databases or v1 artifacts
+The separately authorized study completed all five independent conversations using
+eight paid messages and **3.28553740 platform units**, without retries or replacements.
+Three conversations reconciled; two failed the frozen search-order contract. All
+25 genuine questions persisted. See [the complete report](../evaluations/reliability-v2-report.md).
+The execution lock is permanent: **do not rerun this series**.
+
+The preparation record below describes the fresh study before paid authorization,
+separate from the stopped `reliability-v1` conversation. At that checkpoint no paid
+v2 messages had been attempted. No original databases or v1 artifacts
 were migrated, backfilled, regraded or replaced.
 
 ## Frozen artifacts
@@ -104,7 +111,8 @@ V1's reported `0.4537737` units remain in its archived study. Starting v2 does n
 grant paid authorization; the operator must explicitly approve the new study's
 allowance. No paid execution is authorized by this preparation checkpoint.
 
-After explicit approval, execute once from the repository root:
+The separately approved execution used this command once. It is historical and
+must not be rerun:
 
 ```powershell
 .\.venv\Scripts\python.exe -B -m scripts.reliability_evaluation execute --series reliability-v2 --paid
